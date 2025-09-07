@@ -3,7 +3,19 @@
     "allow": [
       "Bash(mix phx.new:*)",
       "Bash(mix deps.get:*)",
-      "Bash(mix ecto.gen.migration:*)"
+      "Bash(mix ecto.gen.migration:*)",
+      "Bash(pg_ctl:*)",
+      "Bash(psql:*)",
+      "Bash(chmod:*)",
+      "Bash(mix ecto.migrate:*)",
+      "Bash(mix ecto.create:*)",
+      "Bash(mix compile)",
+      "Bash(mix run:*)",
+      "Bash(mix test:*)",
+      "Bash(git add:*)",
+      "Read(//c/Users/wgilp/.claude/**)",
+      "Bash(tasklist)",
+      "Bash(netstat:*)"
     ],
     "deny": [],
     "ask": []

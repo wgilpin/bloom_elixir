@@ -49,11 +49,29 @@ This document outlines the comprehensive implementation plan for Project Bloom, 
   - [x] Implement message routing to SessionServer
   - [x] Implement error handling and reconnection logic
 
-- [ ] **Task 6: Pedagogical State Machine**
-  - [ ] Define states: `:exposition`, `:awaiting_answer`, `:awaiting_tool_result`, `:remediating`
-  - [ ] Implement state transition matrix
-  - [ ] Build initial error diagnosis engine
-  - [ ] Build adaptive intervention logic
+- [x] **Task 6: Pedagogical State Machine**
+  - [x] Define core pedagogical states:
+    - [x] `:initializing` - Session setup and context loading
+    - [x] `:exposition` - Primary instructional/lecture mode
+    - [x] `:setting_question` - Question formulation and presentation
+    - [x] `:awaiting_answer` - Passive listening for student response
+    - [x] `:evaluating_answer` - Processing submission (maps to `:awaiting_tool_result`)
+    - [x] `:providing_feedback_correct` - Positive reinforcement
+    - [x] `:remediating_known_error` - Targeted error correction
+    - [x] `:remediating_unknown_error` - Socratic guidance
+    - [x] `:guiding_student` - Multi-turn dialogue support
+    - [x] `:session_complete` - Terminal state with summary
+  - [x] Implement state transition matrix:
+    - [x] Primary Learning Loop (happy path)
+    - [x] Remediation Loop (known errors)
+    - [x] Guidance Loop (unknown errors)
+  - [x] Build error diagnosis engine:
+    - [x] Pattern matching for common misconceptions
+    - [x] Async tool integration for error analysis
+  - [x] Build adaptive intervention logic:
+    - [x] Tailored hints for known errors
+    - [x] Socratic questioning for unknown errors
+    - [x] Progressive hint system in guidance mode
 
 ## Phase 4: External Integrations (Week 4-5)
 

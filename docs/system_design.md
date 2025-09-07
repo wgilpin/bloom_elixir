@@ -118,9 +118,81 @@ Internally, these functions will handle the specifics of formatting API requests
 
 ### 4. Data Model & State Management
 
+#### 4.1. Pedagogical State Machine
+
+The SessionServer implements a formal finite state machine to manage the flow of each learning session. Each state represents a distinct mode of conversation, with transitions triggered by events like user input or asynchronous tool results.
+
+##### Core Pedagogical States
+
+* **`:initializing`** - Entry point for new sessions
+  * Actions: Load user profile/progress, fetch syllabus, set pedagogical guidance
+  * Transitions: → `:exposition` upon successful initialization
+
+* **`:exposition`** - Primary instructional state ("lecture mode")
+  * Actions: Deliver instructional content, handle clarifying questions
+  * Transitions: → `:setting_question` when instruction complete
+
+* **`:setting_question`** - Transitional state for question formulation
+  * Actions: Select and present next question from syllabus
+  * Transitions: → `:awaiting_answer` immediately after question sent
+
+* **`:awaiting_answer`** - Passive listening state
+  * Actions: Wait for user message
+  * Transitions: → `:evaluating_answer` when message received
+
+* **`:evaluating_answer`** - Critical transient state for processing submissions
+  * Actions: Trigger async tools (check_answer, check_for_common_errors)
+  * Acts as lock to prevent race conditions from rapid user messages
+  * GenServer waits for :DOWN message from Task process
+  * Transitions:
+    * → `:providing_feedback_correct` if answer correct
+    * → `:remediating_known_error` if matches known error pattern
+    * → `:remediating_unknown_error` if incorrect without pattern match
+
+* **`:providing_feedback_correct`** - Positive reinforcement state
+  * Actions: Congratulate user, update mastery tracking
+  * Transitions: → `:exposition` for next topic OR → `:session_complete` if syllabus finished
+
+* **`:remediating_known_error`** - Targeted corrective feedback
+  * Actions: Explain specific error pattern, provide tailored hints
+  * Transitions: → `:awaiting_answer` to retry same question
+
+* **`:remediating_unknown_error`** - General Socratic guidance
+  * Actions: Provide subtle hints, rephrase question
+  * Transitions: → `:guiding_student` for detailed sub-dialogue
+
+* **`:guiding_student`** - Conversational sub-loop for stuck students
+  * Actions: Break down problem, offer successive hints, respond to reasoning
+  * Transitions: → `:awaiting_answer` when ready to retry
+
+* **`:session_complete`** - Terminal state
+  * Actions: Provide session summary, persist final state
+  * Transitions: None (GenServer terminates)
+
+##### State Flow Patterns
+
+**Primary Learning Loop (Happy Path):**
+```
+initializing → exposition → setting_question → awaiting_answer → 
+evaluating_answer → providing_feedback_correct → exposition (loop)
+```
+
+**Remediation Loop (Known Error):**
+```
+evaluating_answer → remediating_known_error → awaiting_answer (retry)
+```
+
+**Guidance Loop (Unknown Error):**
+```
+evaluating_answer → remediating_unknown_error → guiding_student → 
+awaiting_answer (retry with support)
+```
+
+#### 4.2. State Storage
+
 The system manages two distinct types of state:
 
-* **Ephemeral State (In-Memory):** This is the live state of an active user session, managed entirely within its dedicated SessionServer process. It is structured as a map containing fields like user_id, pedagogical_state, conversation_history, syllabus_context, and current_question. This in-memory model provides extremely fast read/write access, which is critical for the real-time nature of the application.
+* **Ephemeral State (In-Memory):** This is the live state of an active user session, managed entirely within its dedicated SessionServer process. It is structured as a map containing fields like user_id, pedagogical_state (current FSM state), conversation_history, syllabus_context, and current_question. This in-memory model provides extremely fast read/write access, which is critical for the real-time nature of the application.
 * **Persistent State (Database):** This is the long-term, durable state. The SessionServer is responsible for ensuring that critical data is persisted. This will occur at key lifecycle events, primarily during a graceful shutdown (via the terminate/2 callback).[2] This ensures the full conversation history is saved upon session completion. For very long-running sessions, a periodic persistence mechanism can be added to save snapshots and prevent data loss in the event of an unexpected crash.
 
 ---

@@ -14,6 +14,7 @@ defmodule Tutor.Learning.SessionServer do
   use GenServer, restart: :temporary
 
   alias Tutor.Learning.{SessionRegistry, ToolTaskSupervisor, SessionPersistence}
+  alias TutorEx.Learning.PedagogicalStateMachine, as: PSM
   alias Tutor.{Repo, Accounts, Curriculum}
 
   defstruct [
@@ -79,7 +80,7 @@ defmodule Tutor.Learning.SessionServer do
     state = %__MODULE__{
       user_id: user_id,
       session_id: session_id,
-      current_state: :exposition,
+      current_state: PSM.initial_state(),
       user: user,
       current_topic: nil,
       current_question: nil,
@@ -94,6 +95,9 @@ defmodule Tutor.Learning.SessionServer do
       last_activity: DateTime.utc_now()
     }
     
+    # Trigger initialization
+    send(self(), :initialize_session)
+    
     # Schedule periodic persistence
     Process.send_after(self(), :persist_session, 30_000)
     
@@ -102,8 +106,12 @@ defmodule Tutor.Learning.SessionServer do
 
   @impl true
   def handle_call({:user_message, message}, _from, state) do
-    new_state = process_user_message(state, message)
-    {:reply, {:ok, new_state.current_state}, new_state}
+    if PSM.accepts_user_input?(state.current_state) do
+      new_state = process_user_message(state, message)
+      {:reply, {:ok, new_state.current_state}, new_state}
+    else
+      {:reply, {:error, :state_does_not_accept_input}, state}
+    end
   end
 
   def handle_call(:get_state, _from, state) do
@@ -122,13 +130,26 @@ defmodule Tutor.Learning.SessionServer do
     # Mock topic for now since Curriculum context doesn't exist yet
     topic = %{id: topic_id, name: "Mock Topic #{topic_id}"}
     
-    new_state = %{state | 
-      current_topic: topic,
-      current_state: :exposition
-    }
-    # Start async question generation
-    generate_question_async(new_state)
-    {:reply, {:ok, :generating_question}, new_state}
+    # Transition to exposition state for new topic
+    case PSM.transition(state.current_state, :next_topic) do
+      {:ok, new_pedagogical_state} ->
+        new_state = %{state | 
+          current_topic: topic,
+          current_state: new_pedagogical_state
+        }
+        # Trigger state entry action
+        new_state = handle_state_entry(new_state, new_pedagogical_state)
+        {:reply, {:ok, :topic_started}, new_state}
+      
+      {:error, :invalid_transition} ->
+        # Force transition if we're in an incompatible state
+        new_state = %{state | 
+          current_topic: topic,
+          current_state: :exposition
+        }
+        new_state = handle_state_entry(new_state, :exposition)
+        {:reply, {:ok, :topic_started}, new_state}
+    end
   end
 
   def handle_call(:stop_session, _from, state) do
@@ -138,6 +159,19 @@ defmodule Tutor.Learning.SessionServer do
   end
 
   @impl true
+  def handle_info(:initialize_session, state) do
+    # Transition from initializing to exposition
+    case PSM.transition(state.current_state, :initialized) do
+      {:ok, new_pedagogical_state} ->
+        new_state = %{state | current_state: new_pedagogical_state}
+        new_state = handle_state_entry(new_state, new_pedagogical_state)
+        {:noreply, new_state}
+      
+      _ ->
+        {:noreply, state}
+    end
+  end
+  
   def handle_info({:tool_result, task_pid, result}, state) do
     case Map.get(state.active_tasks, task_pid) do
       nil ->
@@ -201,13 +235,20 @@ defmodule Tutor.Learning.SessionServer do
         # User providing answer to current question
         handle_answer_message(state, message)
       
-      :awaiting_tool_result ->
+      :evaluating_answer ->
         # Still processing, acknowledge but don't change state
         add_to_conversation(state, :system, "Processing your response...")
       
-      :remediating ->
+      :guiding_student ->
+        # User in guided dialogue
+        handle_guiding_message(state, message)
+        
+      state when state in [:remediating_known_error, :remediating_unknown_error] ->
         # User responding to remediation
         handle_remediation_message(state, message)
+        
+      _ ->
+        state
     end
   end
 
@@ -215,8 +256,14 @@ defmodule Tutor.Learning.SessionServer do
     cond do
       contains_ready_indicators?(message) ->
         if state.current_topic do
-          generate_question_async(state)
-          %{state | current_state: :awaiting_tool_result}
+          # Transition to setting_question
+          case PSM.transition(state.current_state, :instruction_complete) do
+            {:ok, new_pedagogical_state} ->
+              new_state = %{state | current_state: new_pedagogical_state}
+              handle_state_entry(new_state, new_pedagogical_state)
+            _ ->
+              add_to_conversation(state, :system, "I'm still preparing the content.")
+          end
         else
           add_to_conversation(state, :system, "Please select a topic first.")
         end
@@ -224,29 +271,60 @@ defmodule Tutor.Learning.SessionServer do
       true ->
         # General conversation or explanation request
         explain_concept_async(state, message)
-        %{state | current_state: :awaiting_tool_result}
+        state
     end
   end
 
   defp handle_answer_message(state, answer) do
     if state.current_question do
-      check_answer_async(state, answer)
-      %{state | current_state: :awaiting_tool_result}
+      # Transition to evaluating_answer
+      case PSM.transition(state.current_state, :answer_received) do
+        {:ok, new_pedagogical_state} ->
+          new_state = %{state | current_state: new_pedagogical_state}
+          check_answer_async(new_state, answer)
+        _ ->
+          add_to_conversation(state, :system, "Please wait, I'm still processing.")
+      end
     else
       add_to_conversation(state, :system, "No active question to answer.")
     end
   end
 
   defp handle_remediation_message(state, message) do
-    # After remediation, typically move back to exposition or generate new question
+    # After remediation, transition back to awaiting_answer
     cond do
       contains_ready_indicators?(message) ->
-        generate_question_async(state)
-        %{state | current_state: :awaiting_tool_result}
+        case PSM.transition(state.current_state, :retry_question) do
+          {:ok, new_pedagogical_state} ->
+            %{state | current_state: new_pedagogical_state}
+            |> add_to_conversation(:system, "Let's try the question again: #{state.current_question["text"]}")
+          _ ->
+            state
+        end
       
       true ->
-        # Continue conversation
-        %{state | current_state: :exposition}
+        # Continue remediation dialogue
+        state
+    end
+  end
+  
+  defp handle_guiding_message(state, message) do
+    # Handle dialogue during guided student support
+    cond do
+      contains_understanding_indicators?(message) ->
+        # Student indicates understanding, retry question
+        case PSM.transition(state.current_state, :retry_question) do
+          {:ok, new_pedagogical_state} ->
+            %{state | current_state: new_pedagogical_state}
+            |> add_to_conversation(:system, "Great! Let's try the question again: #{state.current_question["text"]}")
+          _ ->
+            state
+        end
+      
+      true ->
+        # Continue guided dialogue
+        provide_guided_hint_async(state, message)
+        state
     end
   end
 
@@ -256,28 +334,34 @@ defmodule Tutor.Learning.SessionServer do
     
     case {task_type, result} do
       {:generate_question, {:ok, question_data}} ->
-        %{state |
-          current_question: question_data,
-          current_state: :awaiting_answer
-        }
-        |> add_to_conversation(:system, question_data["text"])
+        # Transition from setting_question to awaiting_answer
+        case PSM.transition(state.current_state, :question_presented) do
+          {:ok, new_pedagogical_state} ->
+            %{state |
+              current_question: question_data,
+              current_state: new_pedagogical_state
+            }
+            |> add_to_conversation(:system, question_data["text"])
+          _ ->
+            state
+        end
       
       {:check_answer, {:ok, check_result}} ->
         handle_answer_check_result(state, check_result)
       
       {:explain_concept, {:ok, explanation}} ->
-        %{state | current_state: :exposition}
-        |> add_to_conversation(:system, explanation)
+        add_to_conversation(state, :system, explanation)
       
       {:diagnose_error, {:ok, diagnosis}} ->
-        create_remediation_async(state, diagnosis)
-        state
+        handle_error_diagnosis(state, diagnosis)
       
       {:create_remediation, {:ok, remediation}} ->
-        %{state | current_state: :remediating}
-        |> add_to_conversation(:system, remediation)
+        add_to_conversation(state, :system, remediation)
       
-      {_, {:error, error}} ->
+      {:provide_hint, {:ok, hint}} ->
+        add_to_conversation(state, :system, hint)
+      
+      {_, {:error, _error}} ->
         add_to_conversation(state, :system, "I encountered an error. Let me try again.")
     end
   end
@@ -288,15 +372,50 @@ defmodule Tutor.Learning.SessionServer do
     state = update_session_metrics(state, is_correct)
     
     if is_correct do
-      %{state | 
-        current_state: :exposition,
-        current_question: nil
-      }
-      |> add_to_conversation(:system, check_result["feedback"])
+      # Transition to providing_feedback_correct
+      case PSM.transition(state.current_state, :answer_correct) do
+        {:ok, new_pedagogical_state} ->
+          new_state = %{state | current_state: new_pedagogical_state}
+          |> add_to_conversation(:system, check_result["feedback"])
+          
+          # Check if more topics or complete
+          if has_more_topics?(new_state) do
+            case PSM.transition(new_state.current_state, :next_topic) do
+              {:ok, next_state} ->
+                %{new_state | current_state: next_state, current_question: nil}
+              _ ->
+                new_state
+            end
+          else
+            case PSM.transition(new_state.current_state, :syllabus_complete) do
+              {:ok, complete_state} ->
+                %{new_state | current_state: complete_state}
+                |> handle_state_entry(complete_state)
+              _ ->
+                new_state
+            end
+          end
+        _ ->
+          state
+      end
     else
       # Diagnose the error for remediation
       diagnose_error_async(state, check_result)
-      %{state | current_state: :awaiting_tool_result}
+      state
+    end
+  end
+  
+  defp handle_error_diagnosis(state, diagnosis) do
+    error_type = diagnosis["error_type"]
+    
+    event = if error_type == "known", do: :known_error_detected, else: :unknown_error_detected
+    
+    case PSM.transition(state.current_state, event) do
+      {:ok, new_pedagogical_state} ->
+        new_state = %{state | current_state: new_pedagogical_state}
+        handle_state_entry(new_state, new_pedagogical_state)
+      _ ->
+        state
     end
   end
 
@@ -346,6 +465,15 @@ defmodule Tutor.Learning.SessionServer do
     )
     monitor_task(state, task, :create_remediation)
   end
+  
+  defp provide_guided_hint_async(state, message) do
+    task = ToolTaskSupervisor.async_tool_call(
+      Tutor.Tools,
+      :provide_hint,
+      [state.current_question, message]
+    )
+    monitor_task(state, task, :provide_hint)
+  end
 
   defp monitor_task(state, task, task_type) do
     # Store both the task struct and type for proper handling
@@ -375,6 +503,13 @@ defmodule Tutor.Learning.SessionServer do
       String.contains?(message, indicator)
     end)
   end
+  
+  defp contains_understanding_indicators?(message) do
+    message = String.downcase(message)
+    Enum.any?(["understand", "got it", "i see", "makes sense", "ok", "okay", "ready"], fn indicator ->
+      String.contains?(message, indicator)
+    end)
+  end
 
   defp update_session_metrics(state, is_correct) do
     metrics = state.session_metrics
@@ -383,6 +518,79 @@ defmodule Tutor.Learning.SessionServer do
       correct_answers: if(is_correct, do: metrics.correct_answers + 1, else: metrics.correct_answers)
     }
     %{state | session_metrics: new_metrics}
+  end
+  
+  defp handle_state_entry(state, pedagogical_state) do
+    case PSM.state_entry_action(pedagogical_state) do
+      {:ok, :load_user_context} ->
+        # Already loaded in init
+        state
+        
+      {:ok, :deliver_instruction} ->
+        # Deliver instruction for current topic
+        if state.current_topic do
+          state
+          |> add_to_conversation(:system, "Let's learn about #{state.current_topic.name}.")
+        else
+          state
+        end
+        
+      {:ok, :select_question} ->
+        # Generate a question
+        generate_question_async(state)
+        
+      {:ok, :trigger_evaluation_tools} ->
+        # Already triggered by check_answer_async
+        state
+        
+      {:ok, :update_mastery} ->
+        # Update mastery in metrics (already done)
+        state
+        
+      {:ok, :generate_targeted_hint} ->
+        # Generate hint for known error
+        create_remediation_async(state, %{"type" => "known_error"})
+        
+      {:ok, :generate_socratic_prompt} ->
+        # Generate Socratic prompt
+        create_remediation_async(state, %{"type" => "unknown_error"})
+        
+      {:ok, :start_guided_dialogue} ->
+        state
+        |> add_to_conversation(:system, "Let's work through this together. What part are you finding difficult?")
+        
+      {:ok, :generate_summary} ->
+        generate_session_summary(state)
+        
+      :no_action ->
+        state
+    end
+  end
+  
+  defp has_more_topics?(_state) do
+    # Mock: In real implementation, check syllabus progress
+    false
+  end
+  
+  defp generate_session_summary(state) do
+    metrics = state.session_metrics
+    accuracy = if metrics.questions_attempted > 0 do
+      Float.round(metrics.correct_answers / metrics.questions_attempted * 100, 1)
+    else
+      0.0
+    end
+    
+    summary = """
+    Great session! Here's your summary:
+    - Questions attempted: #{metrics.questions_attempted}
+    - Correct answers: #{metrics.correct_answers}
+    - Accuracy: #{accuracy}%
+    - Topics covered: #{length(metrics.topics_covered)}
+    
+    Keep up the great work!
+    """
+    
+    add_to_conversation(state, :system, summary)
   end
 
 end
