@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en" class="[scrollbar-gutter:stable]">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <title>Tutor Chat - Project Bloom</title>
+    <link phx-track-static rel="stylesheet" href="/assets/app.css" />
+    <script defer phx-track-static type="text/javascript" src="/assets/app.js">
+    </script>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .chat-container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        height: 80vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .chat-header {
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+        background: #6366f1;
+        color: white;
+        border-radius: 8px 8px 0 0;
+      }
+      .chat-messages {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        max-height: calc(80vh - 180px);
+      }
+      .message {
+        margin-bottom: 15px;
+        padding: 10px;
+        border-radius: 8px;
+      }
+      .message.user {
+        background: #e5e7eb;
+        margin-left: 20%;
+        text-align: right;
+      }
+      .message.tutor {
+        background: #dbeafe;
+        margin-right: 20%;
+      }
+      .message.system {
+        background: #fef3c7;
+        text-align: center;
+        font-style: italic;
+      }
+      .chat-input {
+        padding: 20px;
+        border-top: 1px solid #eee;
+        display: flex;
+        gap: 10px;
+      }
+      .chat-input input {
+        flex: 1;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 16px;
+      }
+      .chat-input button {
+        padding: 12px 20px;
+        background: #6366f1;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      .chat-input button:hover {
+        background: #4f46e5;
+      }
+      .connection-status {
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 14px;
+        margin-left: 10px;
+      }
+      .connected {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .disconnected {
+        background: #fee2e2;
+        color: #dc2626;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="chat-container">
+      <div class="chat-header">
+        <h1>Project Bloom - AI Tutor Chat</h1>
+        <div id="connection-status" class="connection-status disconnected">Connecting...</div>
+      </div>
+      
+      <div id="chat-messages" class="chat-messages">
+        <!-- Messages will be added here -->
+      </div>
+      
+      <div class="chat-input">
+        <input 
+          type="text" 
+          id="message-input" 
+          placeholder="Ask me about GCSE Mathematics..." 
+          onkeypress="handleKeyPress(event)"
+        />
+        <button onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+
+    <script>
+      // Initialize tutor session
+      let session = null;
+      let sessionId = 'demo_session_' + Date.now();
+
+      // DOM elements
+      const messagesContainer = document.getElementById('chat-messages');
+      const messageInput = document.getElementById('message-input');
+      const connectionStatus = document.getElementById('connection-status');
+
+      // Initialize connection
+      window.addEventListener('load', function() {
+        initializeSession();
+      });
+
+      function initializeSession() {
+        if (window.TutorSession) {
+          session = new window.TutorSession(sessionId);
+          
+          // Set up event listeners
+          session.on('tutor_response', handleTutorResponse);
+          session.on('state_change', handleStateChange);
+          session.on('error', handleError);
+          
+          // Connect to session
+          session.connect()
+            .then(() => {
+              updateConnectionStatus(true);
+              addSystemMessage('Connected to tutor session!');
+              addTutorMessage('Hello! I\'m your AI tutor. What would you like to work on today?');
+            })
+            .catch(error => {
+              updateConnectionStatus(false);
+              addSystemMessage('Failed to connect: ' + error.message);
+            });
+        } else {
+          setTimeout(initializeSession, 100); // Retry if TutorSession not loaded yet
+        }
+      }
+
+      function handleKeyPress(event) {
+        if (event.key === 'Enter') {
+          sendMessage();
+        }
+      }
+
+      function sendMessage() {
+        const message = messageInput.value.trim();
+        if (!message || !session) return;
+        
+        // Clear input
+        messageInput.value = '';
+        
+        // Add user message to chat
+        addUserMessage(message);
+        
+        // Send to server
+        session.sendMessage(message)
+          .catch(error => {
+            addSystemMessage('Failed to send message: ' + error.message);
+          });
+      }
+
+      function handleTutorResponse(data) {
+        addTutorMessage(data.content);
+      }
+
+      function handleStateChange(data) {
+        addSystemMessage('Session state: ' + data.state);
+      }
+
+      function handleError(data) {
+        addSystemMessage('Error: ' + data.reason);
+      }
+
+      function addUserMessage(content) {
+        addMessage('user', content);
+      }
+
+      function addTutorMessage(content) {
+        addMessage('tutor', content);
+      }
+
+      function addSystemMessage(content) {
+        addMessage('system', content);
+      }
+
+      function addMessage(type, content) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message ' + type;
+        messageDiv.textContent = content;
+        
+        messagesContainer.appendChild(messageDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
+      function updateConnectionStatus(connected) {
+        connectionStatus.textContent = connected ? 'Connected' : 'Disconnected';
+        connectionStatus.className = 'connection-status ' + (connected ? 'connected' : 'disconnected');
+      }
+    </script>
+  </body>
+</html>
