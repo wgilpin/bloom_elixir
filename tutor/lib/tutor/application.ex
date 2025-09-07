@@ -12,8 +12,10 @@ defmodule Tutor.Application do
       Tutor.Repo,
       {DNSCluster, query: Application.get_env(:tutor, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Tutor.PubSub},
-      # Start a worker by calling: Tutor.Worker.start_link(arg)
-      # {Tutor.Worker, arg},
+      # Learning session infrastructure
+      Tutor.Learning.SessionRegistry,
+      Tutor.Learning.ToolTaskSupervisor,
+      Tutor.Learning.SessionSupervisor,
       # Start to serve requests, typically the last entry
       TutorWeb.Endpoint
     ]

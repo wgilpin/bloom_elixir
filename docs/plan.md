@@ -27,19 +27,19 @@ This document outlines the comprehensive implementation plan for Project Bloom, 
 
 ## Phase 2: Core OTP Architecture (Week 2-3)
 
-- [ ] **Task 3: Implement Supervision Tree**
-  - [ ] Define `TutorEx.Application` structure
-  - [ ] Add `Phoenix.Endpoint`
-  - [ ] Add `Ecto.Repo`
-  - [ ] Add `SessionSupervisor` (DynamicSupervisor)
-  - [ ] Add `SessionRegistry` (Registry)
-  - [ ] Add `ToolTaskSupervisor` (Task.Supervisor)
+- [x] **Task 3: Implement Supervision Tree**
+  - [x] Define `TutorEx.Application` structure
+  - [x] Add `Phoenix.Endpoint`
+  - [x] Add `Ecto.Repo`
+  - [x] Add `SessionSupervisor` (DynamicSupervisor)
+  - [x] Add `SessionRegistry` (Registry)
+  - [x] Add `ToolTaskSupervisor` (Task.Supervisor)
 
-- [ ] **Task 4: Build SessionServer GenServer**
-  - [ ] Define state structure with pedagogical FSM
-  - [ ] Implement client API (start_link, handle_user_message, etc.)
-  - [ ] Implement async tool execution pattern (Task + monitor)
-  - [ ] Implement state persistence callbacks
+- [x] **Task 4: Build SessionServer GenServer**
+  - [x] Define state structure with pedagogical FSM
+  - [x] Implement client API (start_link, handle_user_message, etc.)
+  - [x] Implement async tool execution pattern (Task + monitor)
+  - [x] Implement state persistence callbacks
 
 ## Phase 3: Real-time Communication (Week 3-4)
 
