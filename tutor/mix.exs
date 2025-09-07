@@ -59,7 +59,8 @@ defmodule Tutor.MixProject do
       {:req, "~> 0.4"},
       {:oban, "~> 2.15"},
       {:pow, "~> 1.0"},
-      {:mox, "~> 1.0", only: :test}
+      {:mox, "~> 1.0", only: :test},
+      {:mock, "~> 0.3", only: :test}
     ]
   end
 

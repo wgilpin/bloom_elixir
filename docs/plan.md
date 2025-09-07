@@ -75,12 +75,12 @@ This document outlines the comprehensive implementation plan for Project Bloom, 
 
 ## Phase 4: External Integrations (Week 4-5)
 
-- [ ] **Task 7: LLM Integration Service**
-  - [ ] Implement `TutorEx.Tools.check_answer/2`
-  - [ ] Implement `TutorEx.Tools.generate_question/1`
-  - [ ] Implement `TutorEx.Tools.diagnose_error/2`
-  - [ ] Implement `TutorEx.Tools.create_remediation/2`
-  - [ ] Implement `TutorEx.Tools.explain_concept/2`
+- [x] **Task 7: LLM Integration Service**
+  - [x] Implement `TutorEx.Tools.check_answer/2`
+  - [x] Implement `TutorEx.Tools.generate_question/1`
+  - [x] Implement `TutorEx.Tools.diagnose_error/2`
+  - [x] Implement `TutorEx.Tools.create_remediation/2`
+  - [x] Implement `TutorEx.Tools.explain_concept/2`
 
 ## Phase 5: Frontend Development (Week 5-7)
 
