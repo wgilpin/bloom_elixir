@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mix phx.new:*)",
+      "Bash(mix deps.get:*)",
+      "Bash(mix ecto.gen.migration:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
