@@ -18,8 +18,8 @@ defmodule TutorWeb.SessionChannel do
         
         {:ok, socket}
       
-      {:error, reason} ->
-        Logger.warning("Failed to join session #{session_id}: #{inspect(reason)}")
+      {:error, _reason} ->
+        Logger.warning("Failed to join session #{session_id}")
         {:error, %{reason: "unauthorized"}}
     end
   end
@@ -111,7 +111,7 @@ defmodule TutorWeb.SessionChannel do
       {:ok, _pid} ->
         # Send message to SessionServer
         case SessionServer.handle_user_message(session_id, content) do
-          {:ok, new_state} ->
+          {:ok, _new_state} ->
             # Get the latest conversation to find the response
             state = SessionServer.get_state(session_id)
             response = get_latest_system_response(state.conversation_history)
@@ -128,21 +128,22 @@ defmodule TutorWeb.SessionChannel do
     end
   end
 
-  defp generate_mock_response(content) do
-    cond do
-      String.contains?(String.downcase(content), "hello") ->
-        "Hello! I'm your AI tutor. What would you like to work on today?"
-      
-      String.contains?(String.downcase(content), "help") ->
-        "I can help you with GCSE Mathematics. Try asking me about algebra, geometry, or any specific topic!"
-      
-      String.match?(content, ~r/\d+\s*[\+\-\*\/]\s*\d+/) ->
-        "I can see you're working with numbers! Let me help you solve this step by step."
-      
-      true ->
-        "I understand you said: '#{content}'. How can I help you learn mathematics today?"
-    end
-  end
+  # Unused function - keeping for potential future use
+  # defp generate_mock_response(content) do
+  #   cond do
+  #     String.contains?(String.downcase(content), "hello") ->
+  #       "Hello! I'm your AI tutor. What would you like to work on today?"
+  #     
+  #     String.contains?(String.downcase(content), "help") ->
+  #       "I can help you with GCSE Mathematics. Try asking me about algebra, geometry, or any specific topic!"
+  #     
+  #     String.match?(content, ~r/\d+\s*[\+\-\*\/]\s*\d+/) ->
+  #       "I can see you're working with numbers! Let me help you solve this step by step."
+  #     
+  #     true ->
+  #       "I understand you said: '#{content}'. How can I help you learn mathematics today?"
+  #   end
+  # end
 
   defp notify_session_server_disconnect(session_id, user_id) do
     Logger.info("User #{user_id} disconnected from session #{session_id}")

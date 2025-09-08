@@ -13,9 +13,8 @@ defmodule Tutor.Learning.SessionServer do
   
   use GenServer, restart: :temporary
 
-  alias Tutor.Learning.{SessionRegistry, ToolTaskSupervisor, SessionPersistence}
+  alias Tutor.Learning.{SessionRegistry, ToolTaskSupervisor}
   alias TutorEx.Learning.PedagogicalStateMachine, as: PSM
-  alias Tutor.{Repo, Accounts, Curriculum}
 
   defstruct [
     :user_id,
@@ -33,7 +32,7 @@ defmodule Tutor.Learning.SessionServer do
   # Client API
 
   def start_link(opts) do
-    user_id = Keyword.fetch!(opts, :user_id)
+    _user_id = Keyword.fetch!(opts, :user_id)
     session_id = Keyword.fetch!(opts, :session_id)
     
     GenServer.start_link(__MODULE__, opts, name: via_tuple(session_id))

@@ -98,7 +98,7 @@ defmodule TutorEx.Learning.AdaptiveIntervention do
   """
   @spec generate_known_error_remediation(map(), map()) :: {:ok, String.t()} | {:error, String.t()}
   def generate_known_error_remediation(error_pattern, question) do
-    prompt = """
+    _prompt = """
     The student made this specific error: #{error_pattern.description}
     
     Question: #{question["text"]}
@@ -126,7 +126,7 @@ defmodule TutorEx.Learning.AdaptiveIntervention do
   """
   @spec generate_unknown_error_remediation(map(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def generate_unknown_error_remediation(question, student_answer) do
-    prompt = """
+    _prompt = """
     Question: #{question["text"]}
     Topic: #{question["topic"]}
     Student's answer: #{student_answer}
@@ -214,7 +214,7 @@ defmodule TutorEx.Learning.AdaptiveIntervention do
     "What do you notice about #{get_question_focus(question)}?"
   end
 
-  defp generate_follow_up(:moderate, question) do
+  defp generate_follow_up(:moderate, _question) do
     "Can you identify which step to take first?"
   end
 

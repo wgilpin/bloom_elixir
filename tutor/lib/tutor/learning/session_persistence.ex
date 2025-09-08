@@ -7,7 +7,7 @@ defmodule Tutor.Learning.SessionPersistence do
 
   import Ecto.Query
   alias Tutor.Repo
-  alias Tutor.Learning.{SessionHistory, UserProgress}
+  alias Tutor.Learning.SessionHistory
 
   @doc """
   Persists the current session state to the database.
@@ -159,7 +159,7 @@ defmodule Tutor.Learning.SessionPersistence do
   defp update_user_progress(session_state) do
     # Update UserProgress records based on session performance
     if session_state.current_topic && session_state.session_metrics.questions_attempted > 0 do
-      accuracy = session_state.session_metrics.correct_answers / session_state.session_metrics.questions_attempted
+      _accuracy = session_state.session_metrics.correct_answers / session_state.session_metrics.questions_attempted
 
       # TODO: Implement UserProgress.update_progress/3 function
       # UserProgress.update_progress(

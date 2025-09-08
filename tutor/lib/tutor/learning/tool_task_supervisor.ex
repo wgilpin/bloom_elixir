@@ -41,7 +41,7 @@ defmodule Tutor.Learning.ToolTaskSupervisor do
   @doc """
   Starts a linked task for tool execution with timeout.
   """
-  def start_tool_task(session_pid, tool_function, args, timeout \\ 30_000) do
+  def start_tool_task(session_pid, tool_function, args, _timeout \\ 30_000) do
     Task.Supervisor.start_child(__MODULE__, fn ->
       try do
         result = apply(tool_function, args)

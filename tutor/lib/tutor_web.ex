@@ -43,7 +43,7 @@ defmodule TutorWeb do
         layouts: [html: TutorWeb.Layouts]
 
       import Plug.Conn
-      import TutorWeb.Gettext
+      use Gettext, backend: TutorWeb.Gettext
 
       unquote(verified_routes())
     end
@@ -85,7 +85,7 @@ defmodule TutorWeb do
       import Phoenix.HTML
       # Core UI components and translation
       import TutorWeb.CoreComponents
-      import TutorWeb.Gettext
+      use Gettext, backend: TutorWeb.Gettext
 
       # Shortcut for generating JS commands
       alias Phoenix.LiveView.JS

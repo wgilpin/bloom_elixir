@@ -17,7 +17,7 @@ defmodule TutorWeb.CoreComponents do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
-  import TutorWeb.Gettext
+  use Gettext, backend: TutorWeb.Gettext
 
   @doc """
   Renders a modal.

@@ -16,7 +16,8 @@
       "Read(//c/Users/wgilp/.claude/**)",
       "Bash(tasklist)",
       "Bash(netstat:*)",
-      "Bash(./kill_phoenix.sh:*)"
+      "Bash(./kill_phoenix.sh:*)",
+      "Bash(mix compile:*)"
     ],
     "deny": [],
     "ask": []

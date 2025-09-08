@@ -34,7 +34,7 @@ defmodule TutorEx.Learning.ErrorDiagnosisEngine do
       {:ok, llm_diagnosis} ->
         {:ok, parse_llm_diagnosis(llm_diagnosis)}
       
-      {:error, reason} ->
+      {:error, _reason} ->
         # Fallback to a generic diagnosis if LLM fails
         {:ok, %{
           error_type: :unknown,
