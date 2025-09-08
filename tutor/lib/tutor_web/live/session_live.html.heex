@@ -17,21 +17,107 @@
   <!-- Header -->
   <div class="bg-white shadow-sm border-b px-6 py-4">
     <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold text-gray-800">GCSE Mathematics Tutoring</h1>
-      <div class="text-sm text-gray-500">
-        Session ID: <%= String.slice(@session_id, -8, 8) %>
+      <h1 class="text-xl font-semibold text-gray-800">
+        <%= if @view_state == :topic_selection do %>
+          Choose Your Mathematics Topic
+        <% else %>
+          GCSE Mathematics Tutoring - <%= @selected_topic && @selected_topic.topic || "No Topic" %>
+        <% end %>
+      </h1>
+      <div class="flex items-center space-x-4">
+        <%= if @view_state == :chat do %>
+          <button 
+            phx-click="back_to_topics"
+            class="text-sm text-blue-600 hover:text-blue-800 underline"
+          >
+            ← Change Topic
+          </button>
+        <% end %>
+        <div class="text-sm text-gray-500">
+          Session ID: <%= String.slice(@session_id, -8, 8) %>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Chat Messages Area -->
-  <div class="flex-1 overflow-hidden">
-    <div 
-      id="messages-container" 
-      class="h-full overflow-y-auto px-6 py-4"
-      phx-hook="ScrollToBottom"
-    >
-      <div class="space-y-4">
+  <%= if @view_state == :topic_selection do %>
+    <!-- Topic Selection Area -->
+    <div class="flex-1 overflow-hidden">
+      <div class="h-full overflow-y-auto px-6 py-8">
+        <div class="max-w-4xl mx-auto">
+          <div class="text-center mb-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Welcome to GCSE Mathematics!</h2>
+            <p class="text-gray-600">Choose a topic below to start your personalized tutoring session.</p>
+          </div>
+          
+          <%= if Enum.empty?(@available_topics) do %>
+            <div class="text-center py-12">
+              <div class="text-gray-500 mb-4">
+                <svg class="mx-auto h-16 w-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                </svg>
+              </div>
+              <h3 class="text-lg font-medium text-gray-800 mb-2">No Topics Available</h3>
+              <p class="text-gray-600">Topics are being set up. Please check back later.</p>
+            </div>
+          <% else %>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <%= for topic <- @available_topics do %>
+                <div 
+                  class="bg-white rounded-lg shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-200 cursor-pointer group"
+                  phx-click="select_topic"
+                  phx-value-topic_id={topic.id}
+                >
+                  <div class="p-6">
+                    <div class="flex items-start justify-between mb-3">
+                      <h3 class="text-lg font-semibold text-gray-800 group-hover:text-blue-600 transition-colors">
+                        <%= topic.topic %>
+                      </h3>
+                      <%= if topic.tier do %>
+                        <span class={[
+                          "text-xs px-2 py-1 rounded-full font-medium",
+                          case topic.tier do
+                            "foundation" -> "bg-green-100 text-green-700"
+                            "higher" -> "bg-purple-100 text-purple-700"
+                            "both" -> "bg-blue-100 text-blue-700"
+                            _ -> "bg-gray-100 text-gray-700"
+                          end
+                        ]}>
+                          <%= String.upcase(topic.tier) %>
+                        </span>
+                      <% end %>
+                    </div>
+                    
+                    <%= if topic.description do %>
+                      <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                        <%= topic.description %>
+                      </p>
+                    <% end %>
+                    
+                    <div class="flex items-center text-blue-600 text-sm font-medium group-hover:text-blue-700">
+                      Start Learning
+                      <svg class="ml-1 h-4 w-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  <% else %>
+    <!-- Chat Messages Area -->
+    <div class="flex-1 overflow-hidden min-h-0">
+      <div 
+        id="messages-container" 
+        class="h-full overflow-y-auto px-6 py-4"
+        phx-hook="ScrollToBottom"
+        style="height: calc(100vh - 180px);"
+      >
+        <div class="space-y-4">
         <!-- Welcome Message -->
         <%= if Enum.empty?(@messages) do %>
           <div class="flex justify-start">
@@ -124,44 +210,45 @@
             </div>
           </div>
         <% end %>
+        </div>
       </div>
     </div>
-  </div>
-
-  <!-- Input Area -->
-  <div class="bg-white border-t px-6 py-4">
-    <form phx-submit="send_message" phx-change="validate" class="flex items-end space-x-3">
-      <div class="flex-1">
-        <textarea
-          id="message-input"
-          name="message"
-          rows="1"
-          class="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 resize-none"
-          placeholder="Type your message or ask a question..."
-          style="min-height: 2.5rem; max-height: 8rem;"
-        ><%= @current_message %></textarea>
-      </div>
-      <button
-        type="submit"
-        disabled={@waiting_for_response || String.trim(@current_message) == ""}
-        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <%= if @waiting_for_response do %>
-          <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-          Sending...
-        <% else %>
-          Send
-        <% end %>
-      </button>
-    </form>
-    
-    <!-- User Typing Indicator -->
-    <%= if @typing do %>
-      <div class="mt-2 text-xs text-gray-500">
-        You are typing...
-      </div>
-    <% end %>
-  </div>
+  
+    <!-- Input Area -->
+    <div class="bg-white border-t px-6 py-4">
+      <form phx-submit="send_message" phx-change="validate" class="flex items-end space-x-3">
+        <div class="flex-1">
+          <textarea
+            id="message-input"
+            name="message"
+            rows="1"
+            class="block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 resize-none"
+            placeholder="Type your message or ask a question..."
+            style="min-height: 2.5rem; max-height: 8rem;"
+          ><%= @current_message %></textarea>
+        </div>
+        <button
+          type="submit"
+          disabled={@waiting_for_response || String.trim(@current_message) == ""}
+          class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <%= if @waiting_for_response do %>
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            Sending...
+          <% else %>
+            Send
+          <% end %>
+        </button>
+      </form>
+      
+      <!-- User Typing Indicator -->
+      <%= if @typing do %>
+        <div class="mt-2 text-xs text-gray-500">
+          You are typing...
+        </div>
+      <% end %>
+    </div>
+  <% end %>
 </div>
 
 <script>

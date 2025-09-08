@@ -17,9 +17,9 @@ defmodule TutorWeb.Router do
   scope "/", TutorWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", SessionLive, :index
+    get "/phoenix", PageController, :home
     get "/chat", PageController, :chat
-    live "/session", SessionLive, :index
   end
 
   # Other scopes may use custom stacks.

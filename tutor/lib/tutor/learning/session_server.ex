@@ -158,6 +158,46 @@ defmodule Tutor.Learning.SessionServer do
     {:stop, :normal, :ok, state}
   end
 
+  # Handle async user messages from LiveView
+  @impl true
+  def handle_cast({:user_message, message}, state) do
+    require Logger
+    Logger.info("🎯 SessionServer received message: #{inspect(message)} in state: #{state.current_state}")
+    new_state = process_user_message(state, message)
+    Logger.info("📤 SessionServer finished processing, new state: #{new_state.current_state}")
+    {:noreply, new_state}
+  end
+  
+  # Handle topic selection from LiveView
+  @impl true
+  def handle_cast({:set_topic, topic}, state) do
+    require Logger
+    Logger.info("📚 SessionServer setting topic: #{topic}")
+    
+    # Update state with selected topic
+    new_state = %{state | current_topic: topic}
+    
+    # Send confirmation message to LiveView
+    message = "Great! I've set your topic to **#{topic}**. I'm ready to help you learn. What would you like to do first?\n\n- Ask me a question about #{topic}\n- Request a practice problem\n- Ask me to explain a concept"
+    
+    Phoenix.PubSub.broadcast(
+      Tutor.PubSub, 
+      "session:#{new_state.session_id}", 
+      {:session_response, message}
+    )
+    
+    Logger.info("✅ Topic set to: #{topic}")
+    {:noreply, new_state}
+  end
+  
+  # Handle session cleanup from LiveView termination
+  @impl true
+  def handle_cast(:session_ended, state) do
+    require Logger
+    Logger.info("🔚 SessionServer received session_ended signal")
+    {:stop, :normal, state}
+  end
+
   @impl true
   def handle_info(:initialize_session, state) do
     # Transition from initializing to exposition
@@ -250,6 +290,10 @@ defmodule Tutor.Learning.SessionServer do
       state when state in [:remediating_known_error, :remediating_unknown_error] ->
         # User responding to remediation
         handle_remediation_message(state, message)
+      
+      :session_complete ->
+        # Session complete, but user wants to continue learning
+        handle_session_complete_message(state, message)
         
       _ ->
         state
@@ -273,18 +317,9 @@ defmodule Tutor.Learning.SessionServer do
         end
       
       true ->
-        # General conversation or explanation request
-        # Transition to awaiting_tool_result while processing
-        case PSM.transition(state.current_state, :tool_requested) do
-          {:ok, new_pedagogical_state} ->
-            new_state = %{state | current_state: new_pedagogical_state}
-            explain_concept_async(new_state, message)
-            new_state
-          _ ->
-            # Fallback - still process async but don't change state
-            explain_concept_async(state, message)
-            state
-        end
+        # For now, just send a simple response to test
+        response = "Hello! I'm your AI tutor. You said: '#{message}'. How can I help you learn mathematics today?"
+        add_to_conversation(state, :system, response)
     end
   end
 
@@ -338,6 +373,22 @@ defmodule Tutor.Learning.SessionServer do
         # Continue guided dialogue
         provide_guided_hint_async(state, message)
         state
+    end
+  end
+  
+  defp handle_session_complete_message(state, message) do
+    # Session was marked complete but user wants to continue
+    # Reset to exposition state and allow more questions
+    cond do
+      contains_ready_indicators?(message) ->
+        # User wants another question, transition back to exposition
+        new_state = %{state | current_state: :exposition, current_question: nil}
+        handle_exposition_message(new_state, message)
+      
+      true ->
+        # User is having a general conversation after session
+        new_state = %{state | current_state: :exposition}
+        add_to_conversation(new_state, :system, "I'm ready to continue helping you! You can ask for another question, request help with a concept, or ask me anything about #{state.current_topic || "mathematics"}.")
     end
   end
 
@@ -464,10 +515,11 @@ defmodule Tutor.Learning.SessionServer do
   end
 
   defp explain_concept_async(state, message) do
+    topic = state.current_topic || "general mathematics"
     task = ToolTaskSupervisor.async_tool_call(
       Tutor.Tools,
       :explain_concept,
-      [state.current_topic, message]
+      [topic, message]
     )
     monitor_task(state, task, :explain_concept)
   end
@@ -515,6 +567,18 @@ defmodule Tutor.Learning.SessionServer do
     }
     
     conversation_history = [entry | state.conversation_history]
+    
+    # Broadcast system messages to LiveView
+    if role == :system do
+      require Logger
+      Logger.info("📡 Broadcasting response to LiveView: #{inspect(content)}")
+      Phoenix.PubSub.broadcast(
+        Tutor.PubSub,
+        "session:#{state.session_id}",
+        {:session_response, content}
+      )
+    end
+    
     %{state | 
       conversation_history: conversation_history,
       last_activity: DateTime.utc_now()
@@ -595,8 +659,8 @@ defmodule Tutor.Learning.SessionServer do
   end
   
   defp has_more_topics?(_state) do
-    # Mock: In real implementation, check syllabus progress
-    false
+    # For chat app: Always allow more questions/topics
+    true
   end
   
   defp generate_session_summary(state) do
