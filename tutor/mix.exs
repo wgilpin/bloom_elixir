@@ -62,7 +62,8 @@ defmodule Tutor.MixProject do
       {:earmark, "~> 1.4"},
       {:html_entities, "~> 0.5"},
       {:mox, "~> 1.0", only: :test},
-      {:mock, "~> 0.3", only: :test}
+      {:mock, "~> 0.3", only: :test},
+      {:dotenv_parser, "~> 2.0"}
     ]
   end
 

@@ -1,0 +1,90 @@
+defmodule Tutor.LLM.Providers.OpenAI do
+  @moduledoc """
+  OpenAI provider implementation for chat completions.
+  Supports GPT-3.5, GPT-4, and other OpenAI models.
+  """
+  
+  @behaviour Tutor.LLM.Provider
+  
+  require Logger
+  
+  @api_url "https://api.openai.com/v1/chat/completions"
+  @default_model "gpt-4o-mini"
+  @request_timeout 30_000
+  
+  @impl true
+  def chat_completion(messages, opts \\ %{}) do
+    with {:ok, _config} <- validate_config() do
+      make_request(messages, opts)
+    end
+  end
+  
+  @impl true
+  def default_model, do: @default_model
+  
+  @impl true
+  def validate_config do
+    api_key = System.get_env("OPENAI_API_KEY")
+    
+    if api_key && api_key != "" do
+      {:ok, %{api_key: api_key}}
+    else
+      {:error, "OPENAI_API_KEY environment variable not set"}
+    end
+  end
+  
+  defp make_request(messages, opts) do
+    with {:ok, config} <- validate_config() do
+      request_body = build_request_body(messages, opts)
+      headers = build_headers(config.api_key)
+      
+      case Req.post(@api_url,
+        json: request_body,
+        headers: headers,
+        receive_timeout: opts[:timeout] || @request_timeout
+      ) do
+        {:ok, %{status: 200, body: %{"choices" => [%{"message" => %{"content" => content}} | _]}}} ->
+          {:ok, String.trim(content)}
+          
+        {:ok, %{status: status, body: body}} ->
+          Logger.error("OpenAI API error: #{status} - #{inspect(body)}")
+          {:error, {:api_error, status, body}}
+          
+        {:error, reason} ->
+          Logger.error("OpenAI request failed: #{inspect(reason)}")
+          {:error, {:request_failed, reason}}
+      end
+    end
+  end
+  
+  defp build_request_body(messages, opts) do
+    %{
+      model: opts[:model] || @default_model,
+      messages: messages,
+      temperature: opts[:temperature] || 0.7,
+      max_tokens: opts[:max_tokens] || 1000
+    }
+    |> maybe_add_optional_params(opts)
+  end
+  
+  defp maybe_add_optional_params(body, opts) do
+    body
+    |> maybe_add_param(:top_p, opts[:top_p])
+    |> maybe_add_param(:n, opts[:n])
+    |> maybe_add_param(:stream, opts[:stream])
+    |> maybe_add_param(:stop, opts[:stop])
+    |> maybe_add_param(:presence_penalty, opts[:presence_penalty])
+    |> maybe_add_param(:frequency_penalty, opts[:frequency_penalty])
+    |> maybe_add_param(:user, opts[:user])
+  end
+  
+  defp maybe_add_param(body, _key, nil), do: body
+  defp maybe_add_param(body, key, value), do: Map.put(body, key, value)
+  
+  defp build_headers(api_key) do
+    [
+      {"authorization", "Bearer #{api_key}"},
+      {"content-type", "application/json"}
+    ]
+  end
+end

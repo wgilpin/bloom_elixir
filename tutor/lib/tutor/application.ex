@@ -7,6 +7,11 @@ defmodule Tutor.Application do
 
   @impl true
   def start(_type, _args) do
+    # Load environment variables from .env files
+    if Code.ensure_loaded?(Tutor.DotEnv) do
+      Tutor.DotEnv.load!()
+    end
+    
     children = [
       TutorWeb.Telemetry,
       Tutor.Repo,

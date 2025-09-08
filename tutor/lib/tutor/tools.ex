@@ -2,15 +2,13 @@ defmodule Tutor.Tools do
   @moduledoc """
   LLM integration tools for tutoring functionality.
   
-  Provides real-time AI tutoring capabilities through OpenAI API integration.
+  Provides real-time AI tutoring capabilities through configurable LLM providers.
+  Supports OpenAI, Google Gemini, xAI Grok, and other providers.
   All functions are async and designed to be used with Task.Supervisor.
   """
 
   require Logger
-
-  @openai_api_url "https://api.openai.com/v1/chat/completions"
-  @model "gpt-4o-mini"
-  @request_timeout 30_000
+  alias Tutor.LLM.Client
 
   # System prompts for different tutoring functions
   @system_prompts %{
@@ -116,7 +114,7 @@ defmodule Tutor.Tools do
     Please respond with valid JSON only.
     """
     
-    case make_api_request(@system_prompts.generate_question, prompt) do
+    case make_api_request(@system_prompts.generate_question, prompt, %{}) do
       {:ok, response} ->
         case Jason.decode(response) do
           {:ok, data} -> {:ok, data}
@@ -155,7 +153,7 @@ defmodule Tutor.Tools do
     Please analyze this answer and respond with valid JSON only.
     """
     
-    case make_api_request(@system_prompts.check_answer, prompt) do
+    case make_api_request(@system_prompts.check_answer, prompt, %{}) do
       {:ok, response} ->
         case Jason.decode(response) do
           {:ok, data} -> {:ok, data}
@@ -206,7 +204,7 @@ defmodule Tutor.Tools do
     Please respond with valid JSON only.
     """
     
-    case make_api_request(@system_prompts.diagnose_error, prompt) do
+    case make_api_request(@system_prompts.diagnose_error, prompt, %{}) do
       {:ok, response} ->
         case Jason.decode(response) do
           {:ok, data} -> {:ok, data}
@@ -258,7 +256,7 @@ defmodule Tutor.Tools do
     Focus on the root cause and provide clear, step-by-step guidance.
     """
     
-    case make_api_request(@system_prompts.create_remediation, prompt) do
+    case make_api_request(@system_prompts.create_remediation, prompt, %{}) do
       {:ok, response} -> {:ok, response}
       {:error, reason} ->
         Logger.warning("API request failed for create_remediation: #{inspect(reason)}, using fallback")
@@ -303,7 +301,7 @@ defmodule Tutor.Tools do
     Address their specific question and provide a helpful, encouraging explanation.
     """
     
-    case make_api_request(@system_prompts.explain_concept, prompt) do
+    case make_api_request(@system_prompts.explain_concept, prompt, %{}) do
       {:ok, response} -> {:ok, response}
       {:error, reason} ->
         Logger.warning("API request failed for explain_concept: #{inspect(reason)}, using fallback")
@@ -360,7 +358,7 @@ defmodule Tutor.Tools do
     Keep the hint concise but helpful.
     """
     
-    case make_api_request(system_prompt, prompt) do
+    case make_api_request(system_prompt, prompt, %{}) do
       {:ok, response} -> {:ok, response}
       {:error, reason} ->
         Logger.warning("API request failed for provide_hint: #{inspect(reason)}, using fallback")
@@ -382,45 +380,18 @@ defmodule Tutor.Tools do
     """}
   end
 
-  # Private function to make API requests to OpenAI
-  defp make_api_request(system_prompt, user_prompt) do
-    api_key = System.get_env("OPENAI_API_KEY")
+  # Private function to make API requests through the LLM client
+  defp make_api_request(system_prompt, user_prompt, opts \\ %{}) do
+    messages = [
+      Client.format_message("system", system_prompt),
+      Client.format_message("user", user_prompt)
+    ]
     
-    if is_nil(api_key) or api_key == "" do
-      Logger.error("OPENAI_API_KEY environment variable not set")
-      {:error, :missing_api_key}
-    else
-      request_body = %{
-        model: @model,
-        messages: [
-          %{role: "system", content: system_prompt},
-          %{role: "user", content: user_prompt}
-        ],
-        temperature: 0.7,
-        max_tokens: 1000
-      }
-      
-      headers = [
-        {"authorization", "Bearer #{api_key}"},
-        {"content-type", "application/json"}
-      ]
-      
-      case Req.post(@openai_api_url, 
-        json: request_body, 
-        headers: headers,
-        receive_timeout: @request_timeout
-      ) do
-        {:ok, %{status: 200, body: %{"choices" => [%{"message" => %{"content" => content}} | _]}}} ->
-          {:ok, String.trim(content)}
-          
-        {:ok, %{status: status, body: body}} ->
-          Logger.error("OpenAI API error: #{status} - #{inspect(body)}")
-          {:error, {:api_error, status, body}}
-          
-        {:error, reason} ->
-          Logger.error("Request failed: #{inspect(reason)}")
-          {:error, {:request_failed, reason}}
-      end
-    end
+    default_opts = %{
+      temperature: 0.7,
+      max_tokens: 1000
+    }
+    
+    Client.chat_completion(messages, Map.merge(default_opts, opts))
   end
 end

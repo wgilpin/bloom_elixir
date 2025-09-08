@@ -52,6 +52,11 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# LLM Provider Configuration
+# Set the default LLM provider (can be overridden by LLM_PROVIDER env var)
+# Options: "openai", "gemini", "grok"
+config :tutor, :llm_provider, "openai"
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
