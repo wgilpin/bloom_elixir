@@ -93,7 +93,7 @@ defmodule Tutor.Tools do
   Generates a question for the given topic using AI.
   Returns {:ok, map} with question data or {:error, reason}.
   """
-  def generate_question(topic) do
+  def generate_question(topic, conversation_history \\ []) do
     topic_name = cond do
       is_map(topic) and Map.has_key?(topic, :name) -> topic.name
       is_map(topic) and Map.has_key?(topic, "name") -> topic["name"]
@@ -107,9 +107,35 @@ defmodule Tutor.Tools do
       true -> "foundation"
     end
     
+    # Build conversation context
+    context = if Enum.empty?(conversation_history) do
+      ""
+    else
+      recent_messages = conversation_history
+        |> Enum.take(-6)  # Last 6 messages
+        |> Enum.reverse()
+        |> Enum.map(fn entry ->
+          role_name = case entry.role do
+            :user -> "Student"
+            :system -> "AI Tutor"
+            _ -> "System"
+          end
+          "#{role_name}: #{entry.content}"
+        end)
+        |> Enum.join("\n")
+      
+      """
+      
+      Recent conversation context:
+      #{recent_messages}
+      
+      Based on this conversation, the student is requesting another question.
+      """
+    end
+    
     prompt = """
     Generate a GCSE Mathematics question for the topic: #{topic_name}
-    Difficulty level: #{difficulty}
+    Difficulty level: #{difficulty}#{context}
     
     Please respond with valid JSON only.
     """
@@ -285,7 +311,7 @@ defmodule Tutor.Tools do
   Explains a concept or answers student questions using AI.
   Returns {:ok, string} with explanation or {:error, reason}.
   """
-  def explain_concept(topic, student_message) do
+  def explain_concept(topic, student_message, conversation_history \\ []) do
     topic_name = cond do
       is_map(topic) and Map.has_key?(topic, :name) -> topic.name
       is_map(topic) and Map.has_key?(topic, "name") -> topic["name"]
@@ -293,12 +319,38 @@ defmodule Tutor.Tools do
       true -> "this concept"
     end
     
+    # Build conversation context
+    context = if Enum.empty?(conversation_history) do
+      ""
+    else
+      recent_messages = conversation_history
+        |> Enum.take(-6)  # Last 6 messages
+        |> Enum.reverse()
+        |> Enum.map(fn entry ->
+          role_name = case entry.role do
+            :user -> "Student"
+            :system -> "AI Tutor"
+            _ -> "System"
+          end
+          "#{role_name}: #{entry.content}"
+        end)
+        |> Enum.join("\n")
+      
+      """
+      
+      Recent conversation context:
+      #{recent_messages}
+      
+      """
+    end
+    
     prompt = """
     Topic: #{topic_name}
-    Student Question: "#{student_message}"
+    Student Question: "#{student_message}"#{context}
     
     Please explain this concept clearly for a GCSE student. 
     Address their specific question and provide a helpful, encouraging explanation.
+    If the student is asking for "another" question or similar, generate an appropriate question.
     """
     
     case make_api_request(@system_prompts.explain_concept, prompt, %{}) do
@@ -329,6 +381,114 @@ defmodule Tutor.Tools do
     
     Would you like me to work through a specific example with you?
     """}
+  end
+
+  @doc """
+  Classifies user intent from their message.
+  Returns {:ok, intent} where intent is one of:
+    - :request_question - User wants a practice question
+    - :request_help - User wants help or explanation
+    - :understanding_confirmation - User indicates they understand
+    - :confusion - User indicates confusion or lack of understanding
+    - :answer_attempt - User is providing an answer to a question
+    - :general - General conversation
+  """
+  def classify_intent(message, conversation_history \\ []) do
+    # Build conversation context
+    context = if Enum.empty?(conversation_history) do
+      ""
+    else
+      recent_messages = conversation_history
+        |> Enum.take(-4)  # Last 4 messages for context
+        |> Enum.reverse()
+        |> Enum.map(fn entry ->
+          role_name = case entry.role do
+            :user -> "Student"
+            :system -> "AI Tutor"
+            _ -> "System"
+          end
+          "#{role_name}: #{entry.content}"
+        end)
+        |> Enum.join("\n")
+      
+      """
+
+      Recent conversation context:
+      #{recent_messages}
+
+      """
+    end
+
+    system_prompt = """
+    You are an intent classifier for an AI tutoring system. Analyze the student's message and classify their intent.
+
+    Return ONLY one of these exact words:
+    - "request_question" if they want a practice question/problem (e.g., "give me another", "next question", "more problems")
+    - "request_help" if they want help/explanation (e.g., "explain this", "I don't understand", "help me")
+    - "understanding_confirmation" if they indicate understanding (e.g., "I get it", "makes sense", "oh I see", "got it")
+    - "confusion" if they express confusion or lack of understanding (e.g., "I'm confused", "this doesn't make sense", "I don't get it")
+    - "answer_attempt" if they're providing an answer to a math problem (contains numbers, equations, or mathematical expressions)
+    - "general" for general conversation or other intents
+
+    Be generous in interpretation. Look for the primary intent even if phrased casually.
+    """
+
+    prompt = """
+    Student message: "#{message}"#{context}
+    
+    Intent:
+    """
+
+    case make_api_request(system_prompt, prompt) do
+      {:ok, response} ->
+        intent = response |> String.trim() |> String.downcase()
+        case intent do
+          "request_question" -> {:ok, :request_question}
+          "request_help" -> {:ok, :request_help}
+          "understanding_confirmation" -> {:ok, :understanding_confirmation}
+          "confusion" -> {:ok, :confusion}
+          "answer_attempt" -> {:ok, :answer_attempt}
+          "general" -> {:ok, :general}
+          _ -> {:ok, :general} # Default fallback
+        end
+      {:error, _reason} ->
+        # Fallback to simple keyword matching if LLM fails
+        message_lower = String.downcase(message)
+        cond do
+          # Question requests
+          String.contains?(message_lower, "another") or 
+          String.contains?(message_lower, "more") or
+          String.contains?(message_lower, "next") or
+          String.contains?(message_lower, "question") ->
+            {:ok, :request_question}
+          
+          # Help requests
+          String.contains?(message_lower, "help") or
+          String.contains?(message_lower, "explain") or
+          String.contains?(message_lower, "don't understand") ->
+            {:ok, :request_help}
+            
+          # Understanding confirmations
+          String.contains?(message_lower, "got it") or
+          String.contains?(message_lower, "makes sense") or
+          String.contains?(message_lower, "i see") or
+          String.contains?(message_lower, "understand") ->
+            {:ok, :understanding_confirmation}
+            
+          # Confusion indicators
+          String.contains?(message_lower, "confused") or
+          String.contains?(message_lower, "don't get") or
+          String.contains?(message_lower, "lost") ->
+            {:ok, :confusion}
+            
+          # Answer attempts (contains numbers)
+          Regex.match?(~r/\d+/, message) ->
+            {:ok, :answer_attempt}
+            
+          true ->
+            {:ok, :general}
+        end
+    end
   end
 
   @doc """

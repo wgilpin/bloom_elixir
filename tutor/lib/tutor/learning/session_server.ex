@@ -301,8 +301,9 @@ defmodule Tutor.Learning.SessionServer do
   end
 
   defp handle_exposition_message(state, message) do
-    cond do
-      contains_ready_indicators?(message) ->
+    # Use LLM to classify intent instead of keyword matching
+    case Tutor.Tools.classify_intent(message, state.conversation_history) do
+      {:ok, :request_question} ->
         if state.current_topic do
           # Transition to setting_question
           case PSM.transition(state.current_state, :instruction_complete) do
@@ -316,10 +317,9 @@ defmodule Tutor.Learning.SessionServer do
           add_to_conversation(state, :system, "Please select a topic first.")
         end
       
-      true ->
-        # For now, just send a simple response to test
-        response = "Hello! I'm your AI tutor. You said: '#{message}'. How can I help you learn mathematics today?"
-        add_to_conversation(state, :system, response)
+      {:ok, _} ->
+        # General conversation or help request - use LLM for explanation
+        explain_concept_async(state, message)
     end
   end
 
@@ -500,7 +500,7 @@ defmodule Tutor.Learning.SessionServer do
     task = ToolTaskSupervisor.async_tool_call(
       Tutor.Tools, 
       :generate_question, 
-      [state.current_topic]
+      [state.current_topic, state.conversation_history]
     )
     monitor_task(state, task, :generate_question)
   end
@@ -519,7 +519,7 @@ defmodule Tutor.Learning.SessionServer do
     task = ToolTaskSupervisor.async_tool_call(
       Tutor.Tools,
       :explain_concept,
-      [topic, message]
+      [topic, message, state.conversation_history]
     )
     monitor_task(state, task, :explain_concept)
   end

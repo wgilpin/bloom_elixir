@@ -15,7 +15,7 @@ This application now supports multiple LLM providers. You can easily switch betw
 - Get API key: https://makersuite.google.com/app/apikey
 
 ### 3. xAI Grok
-- Models: Grok-beta, Grok-1
+- Models: grok-2-1212, grok-2-mini
 - Required: `GROK_API_KEY` or `XAI_API_KEY` environment variable
 - Get API key: https://x.ai/api
 

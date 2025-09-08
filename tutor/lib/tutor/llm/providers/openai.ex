@@ -10,6 +10,10 @@ defmodule Tutor.LLM.Providers.OpenAI do
   
   @api_url "https://api.openai.com/v1/chat/completions"
   @default_model "gpt-4o-mini"
+  
+  defp get_model do
+    System.get_env("OPENAI_MODEL") || @default_model
+  end
   @request_timeout 30_000
   
   @impl true
@@ -59,7 +63,7 @@ defmodule Tutor.LLM.Providers.OpenAI do
   
   defp build_request_body(messages, opts) do
     %{
-      model: opts[:model] || @default_model,
+      model: opts[:model] || get_model(),
       messages: messages,
       temperature: opts[:temperature] || 0.7,
       max_tokens: opts[:max_tokens] || 1000

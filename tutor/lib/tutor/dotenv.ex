@@ -39,13 +39,15 @@ defmodule Tutor.DotEnv do
     if File.exists?(path) do
       Logger.debug("Loading environment variables from #{filename}")
       
-      case DotenvParser.parse_file(path) do
-        {:ok, data} -> data
+      data = case DotenvParser.parse_file(path) do
+        {:ok, parsed_data} -> parsed_data
+        parsed_data when is_list(parsed_data) -> parsed_data
         {:error, reason} -> 
           Logger.warning("Failed to parse #{filename}: #{inspect(reason)}")
           []
       end
-      |> Enum.each(fn {key, value} ->
+      
+      Enum.each(data, fn {key, value} ->
         # Only set if not already set in system environment
         if System.get_env(key) == nil do
           System.put_env(key, value)

@@ -10,6 +10,10 @@ defmodule Tutor.LLM.Providers.Gemini do
   
   @base_url "https://generativelanguage.googleapis.com/v1beta"
   @default_model "gemini-pro"
+  
+  defp get_model do
+    System.get_env("GEMINI_MODEL") || @default_model
+  end
   @request_timeout 30_000
   
   @impl true
@@ -34,7 +38,7 @@ defmodule Tutor.LLM.Providers.Gemini do
   end
   
   defp make_request(messages, opts, config) do
-    model = opts[:model] || @default_model
+    model = opts[:model] || get_model()
     url = build_url(model, config.api_key)
     request_body = build_request_body(messages, opts)
     headers = build_headers()
