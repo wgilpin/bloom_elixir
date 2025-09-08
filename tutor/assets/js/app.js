@@ -21,10 +21,48 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 
+// LiveView hooks
+let Hooks = {}
+
+// Auto-scroll to bottom hook for chat messages
+Hooks.ScrollToBottom = {
+  mounted() {
+    this.scrollToBottom()
+  },
+  updated() {
+    this.scrollToBottom()
+  },
+  scrollToBottom() {
+    this.el.scrollTop = this.el.scrollHeight
+  }
+}
+
+// Math rendering hook for KaTeX
+Hooks.MathContent = {
+  mounted() {
+    this.renderMath()
+  },
+  updated() {
+    this.renderMath()
+  },
+  renderMath() {
+    if (typeof renderMathInElement !== 'undefined') {
+      renderMathInElement(this.el, {
+        delimiters: [
+          {left: '\\(', right: '\\)', display: false},
+          {left: '\\[', right: '\\]', display: true}
+        ],
+        throwOnError: false
+      });
+    }
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
-  params: {_csrf_token: csrfToken}
+  params: {_csrf_token: csrfToken},
+  hooks: Hooks
 })
 
 // Show progress bar on live navigation and form submits

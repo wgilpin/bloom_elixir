@@ -119,3 +119,4 @@ Next phases from `docs/plan.md`:
 - `priv/repo/migrations/` - Database schema definitions
 - at the start of each conversation read @docs\PRD.md and @docs\plan.md. Use other docs in /docs as needed
 - check off work complete in plan.md for tracking
+- the format for a taskkill command is `cmd //c "taskkill /PID 24664 /F"`

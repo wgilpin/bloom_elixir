@@ -8,11 +8,11 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
 
   @type state :: :initializing | :exposition | :setting_question | :awaiting_answer |
                  :evaluating_answer | :providing_feedback_correct | :remediating_known_error |
-                 :remediating_unknown_error | :guiding_student | :session_complete
+                 :remediating_unknown_error | :guiding_student | :session_complete | :awaiting_tool_result
 
   @type event :: :initialized | :instruction_complete | :question_presented | :answer_received |
                  :answer_correct | :known_error_detected | :unknown_error_detected |
-                 :guidance_complete | :retry_question | :syllabus_complete | :next_topic
+                 :guidance_complete | :retry_question | :syllabus_complete | :next_topic | :tool_requested | :tool_completed
 
   @type transition_result :: {:ok, state} | {:error, :invalid_transition}
 
@@ -37,7 +37,8 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
       :remediating_known_error,
       :remediating_unknown_error,
       :guiding_student,
-      :session_complete
+      :session_complete,
+      :awaiting_tool_result
     ]
   end
 
@@ -65,9 +66,11 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
   
   # From :exposition
   def transition(:exposition, :instruction_complete), do: {:ok, :setting_question}
+  def transition(:exposition, :tool_requested), do: {:ok, :awaiting_tool_result}
   
   # From :setting_question
   def transition(:setting_question, :question_presented), do: {:ok, :awaiting_answer}
+  def transition(:setting_question, :tool_requested), do: {:ok, :awaiting_tool_result}
   
   # From :awaiting_answer
   def transition(:awaiting_answer, :answer_received), do: {:ok, :evaluating_answer}
@@ -90,6 +93,11 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
   # From :guiding_student
   def transition(:guiding_student, :retry_question), do: {:ok, :awaiting_answer}
   
+  # From :awaiting_tool_result (can return to various states based on context)
+  def transition(:awaiting_tool_result, :tool_completed), do: {:ok, :exposition}
+  def transition(:awaiting_tool_result, :question_presented), do: {:ok, :awaiting_answer}
+  def transition(:awaiting_tool_result, :instruction_complete), do: {:ok, :setting_question}
+  
   # Invalid transitions
   def transition(_, _), do: {:error, :invalid_transition}
 
@@ -106,6 +114,7 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
   def valid_events(:remediating_known_error), do: [:retry_question]
   def valid_events(:remediating_unknown_error), do: [:guidance_complete]
   def valid_events(:guiding_student), do: [:retry_question]
+  def valid_events(:awaiting_tool_result), do: [:tool_completed, :question_presented, :instruction_complete]
   def valid_events(:session_complete), do: []
 
   @doc """
@@ -114,7 +123,7 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
   @spec flow_pattern(state()) :: :primary_learning | :remediation | :guidance | :terminal
   def flow_pattern(state) when state in [:initializing, :exposition, :setting_question, 
                                           :awaiting_answer, :evaluating_answer, 
-                                          :providing_feedback_correct], do: :primary_learning
+                                          :providing_feedback_correct, :awaiting_tool_result], do: :primary_learning
   def flow_pattern(:remediating_known_error), do: :remediation
   def flow_pattern(state) when state in [:remediating_unknown_error, :guiding_student], do: :guidance
   def flow_pattern(:session_complete), do: :terminal
@@ -132,6 +141,7 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
   def state_description(:remediating_known_error), do: "Addressing specific misconception"
   def state_description(:remediating_unknown_error), do: "Providing general guidance"
   def state_description(:guiding_student), do: "Guiding through dialogue"
+  def state_description(:awaiting_tool_result), do: "Processing request"
   def state_description(:session_complete), do: "Session complete"
 
   @doc """
@@ -147,6 +157,7 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
   def state_entry_action(:remediating_known_error), do: {:ok, :generate_targeted_hint}
   def state_entry_action(:remediating_unknown_error), do: {:ok, :generate_socratic_prompt}
   def state_entry_action(:guiding_student), do: {:ok, :start_guided_dialogue}
+  def state_entry_action(:awaiting_tool_result), do: :no_action
   def state_entry_action(:session_complete), do: {:ok, :generate_summary}
 
   @doc """
@@ -156,6 +167,7 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
   def accepts_user_input?(:awaiting_answer), do: true
   def accepts_user_input?(:guiding_student), do: true
   def accepts_user_input?(:exposition), do: true  # For clarifying questions
+  def accepts_user_input?(:awaiting_tool_result), do: false  # Waiting for async processing
   def accepts_user_input?(_), do: false
 
   @doc """
@@ -165,5 +177,6 @@ defmodule TutorEx.Learning.PedagogicalStateMachine do
   def requires_async_tools?(:evaluating_answer), do: true
   def requires_async_tools?(:remediating_known_error), do: true
   def requires_async_tools?(:remediating_unknown_error), do: true
+  def requires_async_tools?(:awaiting_tool_result), do: true
   def requires_async_tools?(_), do: false
 end

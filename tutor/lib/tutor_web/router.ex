@@ -19,6 +19,7 @@ defmodule TutorWeb.Router do
 
     get "/", PageController, :home
     get "/chat", PageController, :chat
+    live "/session", SessionLive, :index
   end
 
   # Other scopes may use custom stacks.

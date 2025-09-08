@@ -148,7 +148,7 @@ defmodule Tutor.Learning.SessionServer do
           current_state: :exposition
         }
         new_state = handle_state_entry(new_state, :exposition)
-        {:reply, {:ok, :topic_started}, new_state}
+        {:reply, {:ok, :generating_question}, new_state}
     end
   end
 
@@ -197,7 +197,7 @@ defmodule Tutor.Learning.SessionServer do
         # Process the result
         active_tasks = Map.delete(state.active_tasks, ref)
         state = %{state | active_tasks: active_tasks}
-        new_state = process_tool_result(state, task_type, {:ok, result}, ref)
+        new_state = process_tool_result(state, task_type, result, ref)
         Process.demonitor(ref, [:flush])
         {:noreply, new_state}
     end
@@ -239,6 +239,10 @@ defmodule Tutor.Learning.SessionServer do
         # Still processing, acknowledge but don't change state
         add_to_conversation(state, :system, "Processing your response...")
       
+      :awaiting_tool_result ->
+        # Still processing async tools, acknowledge but don't change state
+        add_to_conversation(state, :system, "Processing your request...")
+      
       :guiding_student ->
         # User in guided dialogue
         handle_guiding_message(state, message)
@@ -270,8 +274,17 @@ defmodule Tutor.Learning.SessionServer do
       
       true ->
         # General conversation or explanation request
-        explain_concept_async(state, message)
-        state
+        # Transition to awaiting_tool_result while processing
+        case PSM.transition(state.current_state, :tool_requested) do
+          {:ok, new_pedagogical_state} ->
+            new_state = %{state | current_state: new_pedagogical_state}
+            explain_concept_async(new_state, message)
+            new_state
+          _ ->
+            # Fallback - still process async but don't change state
+            explain_concept_async(state, message)
+            state
+        end
     end
   end
 
@@ -334,7 +347,7 @@ defmodule Tutor.Learning.SessionServer do
     
     case {task_type, result} do
       {:generate_question, {:ok, question_data}} ->
-        # Transition from setting_question to awaiting_answer
+        # Transition from awaiting_tool_result to awaiting_answer
         case PSM.transition(state.current_state, :question_presented) do
           {:ok, new_pedagogical_state} ->
             %{state |
@@ -350,7 +363,18 @@ defmodule Tutor.Learning.SessionServer do
         handle_answer_check_result(state, check_result)
       
       {:explain_concept, {:ok, explanation}} ->
-        add_to_conversation(state, :system, explanation)
+        # If we were in awaiting_tool_result, transition back to exposition
+        new_state = if state.current_state == :awaiting_tool_result do
+          case PSM.transition(state.current_state, :tool_completed) do
+            {:ok, next_pedagogical_state} ->
+              %{state | current_state: next_pedagogical_state}
+            _ ->
+              state
+          end
+        else
+          state
+        end
+        add_to_conversation(new_state, :system, explanation)
       
       {:diagnose_error, {:ok, diagnosis}} ->
         handle_error_diagnosis(state, diagnosis)
@@ -536,8 +560,11 @@ defmodule Tutor.Learning.SessionServer do
         end
         
       {:ok, :select_question} ->
-        # Generate a question
-        generate_question_async(state)
+        # Generate a question asynchronously
+        # The question will be delivered when the async task completes
+        new_state = generate_question_async(state)
+        # Transition to awaiting_tool_result while processing
+        %{new_state | current_state: :awaiting_tool_result}
         
       {:ok, :trigger_evaluation_tools} ->
         # Already triggered by check_answer_async

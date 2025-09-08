@@ -15,7 +15,8 @@
       "Bash(git add:*)",
       "Read(//c/Users/wgilp/.claude/**)",
       "Bash(tasklist)",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(./kill_phoenix.sh:*)"
     ],
     "deny": [],
     "ask": []

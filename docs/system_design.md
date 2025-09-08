@@ -24,8 +24,8 @@ The application is designed as a distributed system composed of several distinct
 
 The primary components are:
 
-* **Client (Web Browser):** The user-facing interface, responsible for rendering the conversation and capturing user input.
-* **Web Layer (Phoenix Framework):** Serves the client application and manages persistent, real-time communication using Phoenix Channels (WebSockets).
+* **Client (Web Browser):** The user-facing interface rendered by LiveView, responsible for displaying the conversation and capturing user input.
+* **Web Layer (Phoenix Framework):** Serves LiveView pages and manages persistent, real-time communication using LiveView's built-in WebSocket connection.
 * **Session Management Core (OTP Application):** The heart of the backend. This layer is responsible for managing the lifecycle and state of every active user session.
 * **Tooling Service:** An abstraction layer that communicates with external services, such as LLM APIs for answer checking or database lookups for student records.
 * **Persistence Layer (PostgreSQL Database):** Provides long-term storage for user data, syllabus content, and conversation histories.
@@ -42,14 +42,14 @@ graph LR
         Tools[Tooling Service]
         DB[(Persistence<br/>PostgreSQL)]
 
-        Client -- WebSockets/HTTP --> Web
+        Client -- LiveView Events/HTTP --> Web
         Web -- GenServer.cast --> Core
         Core -- async task --> Tools
         Tools -- query --> DB
         DB -- result --> Tools
         Tools -- result --> Core
-        Core -- push --> Web
-        Web -- WebSocket push --> Client
+        Core -- LiveView.send_update --> Web
+        Web -- LiveView push --> Client
     end
 
     subgraph "External Services"
@@ -63,15 +63,14 @@ graph LR
 
 A typical user interaction follows this sequence:
 
-1. The user sends a message through the client interface.
-2. The message is pushed over a persistent WebSocket connection to the corresponding Phoenix Channel process on the server.
-3. The Channel process, holding the user's unique ID, uses a Registry to locate the user's dedicated SessionServer process.[4]
-4. An asynchronous message (GenServer.cast) is sent to the SessionServer containing the user's input.[5] The Channel process returns immediately, keeping the UI responsive.
-5. The SessionServer processes the message according to its current pedagogical state (e.g., if awaiting an answer, it triggers an "check answer" tool).
-6. The SessionServer delegates the long-running tool execution to a separate, monitored Task process to avoid blocking.[1]
-7. Upon completion, the Task sends its result back to the SessionServer.
-8. The SessionServer updates its state, formulates a response, and pushes the new message back to the user's Phoenix Channel process.
-9. The Channel process broadcasts the message over the WebSocket to the client, where it is rendered in the UI.
+1. The user sends a message through the LiveView interface using an event handler.
+2. The LiveView process receives the event and uses a Registry to locate the user's dedicated SessionServer process.[4]
+3. An asynchronous message (GenServer.cast) is sent to the SessionServer containing the user's input.[5] The LiveView process continues handling other events, keeping the UI responsive.
+4. The SessionServer processes the message according to its current pedagogical state (e.g., if awaiting an answer, it triggers a "check answer" tool).
+5. The SessionServer delegates the long-running tool execution to a separate, monitored Task process to avoid blocking.[1]
+6. Upon completion, the Task sends its result back to the SessionServer.
+7. The SessionServer updates its state, formulates a response, and sends a LiveView update message to refresh the UI.
+8. The LiveView process receives the update and re-renders the relevant parts of the interface, pushing changes to the client over the persistent WebSocket connection.
 
 ---
 
@@ -81,8 +80,8 @@ A typical user interaction follows this sequence:
 
 The Phoenix web framework serves as the primary entry point for all client communication.
 
-* **Phoenix Channels:** Channels provide the real-time, bidirectional communication necessary for a chat-based application. Each user connection will be managed by a dedicated Channel process.
-* **Session Lifecycle Management:** The Channel process is responsible for orchestrating the lifecycle of a user's session. Upon a user's successful connection (join), the Channel will request the SessionSupervisor to start a new SessionServer process. Upon disconnection (terminate), it will trigger a graceful shutdown of that same process.
+* **Phoenix LiveView:** LiveView provides the real-time, server-rendered interface necessary for an interactive tutoring application. Each user session will be managed by a dedicated LiveView process that maintains state and handles events.
+* **Session Lifecycle Management:** The LiveView process is responsible for orchestrating the lifecycle of a user's session. Upon a user's successful mount, the LiveView will request the SessionSupervisor to start a new SessionServer process. Upon disconnection (terminate), it will trigger a graceful shutdown of that same process.
 
 #### 3.2. Session Management Core (OTP Application)
 
