@@ -1,0 +1,70 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch Phoenix Server",
+      "type": "mix_task",
+      "request": "launch",
+      "task": "phx.server",
+      "projectDir": "${workspaceRoot}/tutor",
+      "env": {
+        "MIX_ENV": "dev"
+      },
+      "args": [],
+      "startAppsOnBoot": true,
+      "exitAfterTaskReturns": false
+    },
+    {
+      "name": "Launch Phoenix Server with IEx",
+      "type": "mix_task", 
+      "request": "launch",
+      "task": "phx.server",
+      "projectDir": "${workspaceRoot}/tutor",
+      "taskArgs": [
+        "--name", "tutor@127.0.0.1",
+        "--cookie", "tutor"
+      ],
+      "env": {
+        "MIX_ENV": "dev"
+      },
+      "startAppsOnBoot": true,
+      "exitAfterTaskReturns": false
+    },
+    {
+      "name": "Interactive Elixir with Phoenix",
+      "type": "mix_task",
+      "request": "launch",
+      "task": "run",
+      "taskArgs": ["--no-halt"],
+      "projectDir": "${workspaceRoot}/tutor",
+      "env": {
+        "MIX_ENV": "dev"
+      },
+      "startAppsOnBoot": true,
+      "exitAfterTaskReturns": false
+    },
+    {
+      "name": "Run Tests",
+      "type": "mix_task",
+      "request": "launch", 
+      "task": "test",
+      "projectDir": "${workspaceRoot}/tutor",
+      "env": {
+        "MIX_ENV": "test"
+      }
+    },
+    {
+      "name": "Run Specific Test",
+      "type": "mix_task",
+      "request": "launch",
+      "task": "test",
+      "projectDir": "${workspaceRoot}/tutor", 
+      "taskArgs": [
+        "${relativeFile}"
+      ],
+      "env": {
+        "MIX_ENV": "test"
+      }
+    }
+  ]
+}

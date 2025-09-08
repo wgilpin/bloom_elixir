@@ -57,6 +57,13 @@ config :phoenix, :json_library, Jason
 # Options: "openai", "gemini", "grok"
 config :tutor, :llm_provider, "openai"
 
+# LLM Logging Configuration
+config :tutor, :llm_logging,
+  enabled: true,
+  log_requests: true,
+  log_responses: true,
+  log_full_content: true
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
