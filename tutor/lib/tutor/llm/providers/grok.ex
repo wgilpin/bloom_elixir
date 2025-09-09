@@ -41,13 +41,23 @@ defmodule Tutor.LLM.Providers.Grok do
     request_body = build_request_body(messages, opts)
     headers = build_headers(config.api_key)
     
+    Logger.debug("Grok request body: #{inspect(request_body)}")
+    
     case Req.post(@api_url,
       json: request_body,
       headers: headers,
       receive_timeout: opts[:timeout] || @request_timeout
     ) do
-      {:ok, %{status: 200, body: %{"choices" => [%{"message" => %{"content" => content}} | _]}}} ->
-        {:ok, String.trim(content)}
+      {:ok, %{status: 200, body: body}} ->
+        Logger.debug("Grok API response body: #{inspect(body)}")
+        
+        case extract_content_from_response(body) do
+          {:ok, content} ->
+            {:ok, String.trim(content)}
+            
+          {:error, reason} ->
+            {:error, reason}
+        end
         
       {:ok, %{status: status, body: body}} ->
         Logger.error("Grok API error: #{status} - #{inspect(body)}")
@@ -64,7 +74,7 @@ defmodule Tutor.LLM.Providers.Grok do
       model: opts[:model] || get_model(),
       messages: messages,
       temperature: opts[:temperature] || 0.7,
-      max_tokens: opts[:max_tokens] || 1000,
+      max_tokens: opts[:max_tokens] || 4000,
       stream: opts[:stream] || false
     }
     |> maybe_add_optional_params(opts)
@@ -87,5 +97,33 @@ defmodule Tutor.LLM.Providers.Grok do
       {"authorization", "Bearer #{api_key}"},
       {"content-type", "application/json"}
     ]
+  end
+  
+  # Extract content from Grok response, checking both content and reasoning_content fields
+  defp extract_content_from_response(body) do
+    case body do
+      %{"choices" => [choice | _]} ->
+        # Check for regular content first
+        regular_content = get_in(choice, ["message", "content"])
+        # Check for reasoning content (Grok sometimes uses this field)
+        reasoning_content = get_in(choice, ["message", "reasoning_content"])
+        
+        cond do
+          is_binary(regular_content) and regular_content != "" ->
+            {:ok, regular_content}
+            
+          is_binary(reasoning_content) and reasoning_content != "" ->
+            Logger.debug("Using reasoning_content from Grok response")
+            {:ok, reasoning_content}
+            
+          true ->
+            Logger.error("Grok returned empty content in both content and reasoning_content fields")
+            {:error, {:empty_response, "LLM returned empty content"}}
+        end
+        
+      other ->
+        Logger.error("Unexpected Grok response structure: #{inspect(other)}")
+        {:error, {:unexpected_response, other}}
+    end
   end
 end

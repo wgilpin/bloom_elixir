@@ -37,8 +37,6 @@ defmodule TutorWeb.SessionLive do
       |> assign(:user_id, user_id)
       |> assign(:session_id, session_id)
       |> assign(:messages, [])
-      |> assign(:current_message, "")
-      |> assign(:typing, false)
       |> assign(:waiting_for_response, false)
       |> assign(:view_state, :topic_selection)  # Start with topic selection
       |> assign(:available_topics, topics)
@@ -77,28 +75,6 @@ defmodule TutorWeb.SessionLive do
   end
   
   @impl true
-  def handle_event("validate", %{"message" => message}, socket) do
-    socket = assign(socket, :current_message, message)
-    
-    # Send typing indicator
-    socket = if String.length(message) > 0 and not socket.assigns.typing do
-      send_typing_indicator(socket.assigns.session_id, true)
-      assign(socket, :typing, true)
-    else
-      socket
-    end
-    
-    socket = if String.length(message) == 0 and socket.assigns.typing do
-      send_typing_indicator(socket.assigns.session_id, false)
-      assign(socket, :typing, false)
-    else
-      socket
-    end
-    
-    {:noreply, socket}
-  end
-  
-  @impl true
   def handle_event("back_to_topics", _params, socket) do
     socket = assign(socket, :view_state, :topic_selection)
     {:noreply, socket}
@@ -131,14 +107,9 @@ defmodule TutorWeb.SessionLive do
           :ok
       end
       
-      # Stop typing indicator
-      send_typing_indicator(socket.assigns.session_id, false)
-      
       socket = 
         socket
         |> assign(:messages, messages)
-        |> assign(:current_message, "")
-        |> assign(:typing, false)
         |> assign(:waiting_for_response, true)
       
       {:noreply, socket}
@@ -176,12 +147,6 @@ defmodule TutorWeb.SessionLive do
   end
   
   @impl true
-  def handle_info({:typing_indicator, is_typing}, socket) do
-    socket = assign(socket, :assistant_typing, is_typing)
-    {:noreply, socket}
-  end
-  
-  @impl true
   def handle_info(_msg, socket) do
     # Handle other messages
     {:noreply, socket}
@@ -206,9 +171,6 @@ defmodule TutorWeb.SessionLive do
     :crypto.strong_rand_bytes(16) |> Base.encode16()
   end
   
-  defp send_typing_indicator(session_id, is_typing) do
-    Phoenix.PubSub.broadcast(Tutor.PubSub, "session:#{session_id}", {:typing_indicator, is_typing})
-  end
   
   defp format_timestamp(datetime) do
     datetime

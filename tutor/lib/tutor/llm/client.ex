@@ -57,9 +57,9 @@ defmodule Tutor.LLM.Client do
     log_responses = Keyword.get(llm_logging, :log_responses, true)
     log_full_content = Keyword.get(llm_logging, :log_full_content, true)
     
-    # Get retry configuration
-    max_retries = Keyword.get(opts, :max_retries, 3)
-    retry_delay = Keyword.get(opts, :retry_delay, 1000)
+    # Get retry configuration (opts is a map)
+    max_retries = Map.get(opts, :max_retries, 3)
+    retry_delay = Map.get(opts, :retry_delay, 1000)
     
     # Execute with retry logic
     execute_with_retry(

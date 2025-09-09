@@ -142,7 +142,8 @@ defmodule Tutor.Tools do
 
     case make_api_request(@system_prompts.generate_question, prompt, %{}, :generate_question) do
       {:ok, response} ->
-        case Jason.decode(response) do
+        cleaned_response = clean_json_response(response)
+        case Jason.decode(cleaned_response) do
           {:ok, data} -> {:ok, data}
           {:error, _} ->
             Logger.warning("Failed to parse LLM response for generate_question, using fallback")
@@ -157,7 +158,7 @@ defmodule Tutor.Tools do
   # Fallback question generation
   defp generate_fallback_question(topic_name, difficulty) do
     {:ok, %{
-      "text" => "Solve this problem related to #{topic_name}. What is 7 + 8?",
+      "text" => "I failed to do what you asked. How about this problem related to #{topic_name}. What is 7 + 8?",
       "topic" => topic_name,
       "type" => "open_ended",
       "correct_answer" => "15",
@@ -181,7 +182,8 @@ defmodule Tutor.Tools do
 
     case make_api_request(@system_prompts.check_answer, prompt, %{}, :check_answer) do
       {:ok, response} ->
-        case Jason.decode(response) do
+        cleaned_response = clean_json_response(response)
+        case Jason.decode(cleaned_response) do
           {:ok, data} -> {:ok, data}
           {:error, _} ->
             # Fallback to simple comparison if JSON parsing fails
@@ -232,10 +234,11 @@ defmodule Tutor.Tools do
 
     case make_api_request(@system_prompts.diagnose_error, prompt, %{}, :diagnose_error) do
       {:ok, response} ->
-        case Jason.decode(response) do
+        cleaned_response = clean_json_response(response)
+        case Jason.decode(cleaned_response) do
           {:ok, data} -> {:ok, data}
           {:error, _} ->
-            Logger.warning("Failed to parse LLM response for diagnose_error, using fallback. #{response}")
+            Logger.warning("Failed to parse LLM response for diagnose_error, using fallback. #{cleaned_response}")
             diagnose_fallback_error(question, answer_data)
         end
       {:error, reason} ->
@@ -540,26 +543,39 @@ defmodule Tutor.Tools do
     """}
   end
 
+  # Helper function to clean JSON responses from markdown code blocks
+  defp clean_json_response(response) do
+    # Remove markdown code blocks if present
+    cleaned = response
+      |> String.trim()
+      |> String.replace(~r/^```json\s*/, "")
+      |> String.replace(~r/^```\s*/, "")
+      |> String.replace(~r/\s*```$/, "")
+      |> String.trim()
+
+    cleaned
+  end
+
   # Private function to make API requests through the LLM client
   defp make_api_request(system_prompt, user_prompt, opts \\ %{}) do
     make_api_request_with_context(system_prompt, user_prompt, opts, :unknown_tool)
   end
-  
+
   defp make_api_request(system_prompt, user_prompt, opts, tool_name) do
     make_api_request_with_context(system_prompt, user_prompt, opts, tool_name)
   end
-  
+
   defp make_api_request_with_context(system_prompt, user_prompt, opts, tool_name) do
     # Get logging configuration (returns keyword list)
     llm_logging = Application.get_env(:tutor, :llm_logging, [])
     enabled = Keyword.get(llm_logging, :enabled, true)
-    
+
     if enabled do
       Logger.info("🛠️ Tool Call: #{tool_name}")
       Logger.debug("🛠️ Tool System Prompt: #{inspect(system_prompt, limit: 500)}")
       Logger.debug("🛠️ Tool User Prompt: #{inspect(user_prompt, limit: 1000)}")
     end
-    
+
     messages = [
       Client.format_message("system", system_prompt),
       Client.format_message("user", user_prompt)
@@ -574,7 +590,7 @@ defmodule Tutor.Tools do
     result = Client.chat_completion(messages, Map.merge(default_opts, opts))
     end_time = System.monotonic_time()
     duration_ms = System.convert_time_unit(end_time - start_time, :native, :millisecond)
-    
+
     if enabled do
       case result do
         {:ok, response} ->
@@ -584,7 +600,7 @@ defmodule Tutor.Tools do
           Logger.error("🛠️ Tool Error: #{tool_name} failed in #{duration_ms}ms - #{inspect(reason)}")
       end
     end
-    
+
     result
   end
 end

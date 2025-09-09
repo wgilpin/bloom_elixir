@@ -26,7 +26,8 @@ defmodule Tutor.Learning.SessionServer do
     :conversation_history,
     :active_tasks,
     :session_metrics,
-    :last_activity
+    :last_activity,
+    :last_error_diagnosis
   ]
 
   # Client API
@@ -91,7 +92,8 @@ defmodule Tutor.Learning.SessionServer do
         correct_answers: 0,
         topics_covered: []
       },
-      last_activity: DateTime.utc_now()
+      last_activity: DateTime.utc_now(),
+      last_error_diagnosis: nil
     }
     
     # Trigger initialization
@@ -475,21 +477,55 @@ defmodule Tutor.Learning.SessionServer do
     else
       # Diagnose the error for remediation
       diagnose_error_async(state, check_result)
-      state
     end
   end
   
   defp handle_error_diagnosis(state, diagnosis) do
-    error_type = diagnosis["error_type"]
+    # Store the full diagnosis in state for LLM context
+    state_with_diagnosis = %{state | last_error_diagnosis: diagnosis}
     
-    event = if error_type == "known", do: :known_error_detected, else: :unknown_error_detected
+    # Get error category from diagnosis for tailored feedback
+    error_category = diagnosis["error_category"] || "unknown"
+    error_description = diagnosis["error_description"] || ""
+    suggested_approach = diagnosis["suggested_approach"] || ""
     
-    case PSM.transition(state.current_state, event) do
-      {:ok, new_pedagogical_state} ->
-        new_state = %{state | current_state: new_pedagogical_state}
-        handle_state_entry(new_state, new_pedagogical_state)
+    # Create student-friendly feedback based on the diagnosis
+    # The LLM can use the stored diagnosis for more informed future responses
+    feedback = case error_category do
+      "computational" ->
+        "Not quite right. Let me help you with the calculation. Remember to carefully work through each step of the equation. Try subtracting 3 from both sides first, then divide by 2."
+      
+      "procedural" ->
+        "I see where you went wrong with the steps. Remember, when solving equations, you need to do the same operation to both sides to keep them balanced. Let's try again - start by subtracting 3 from both sides."
+      
+      "conceptual" ->
+        "Let's think about this differently. An equation is like a balance scale - whatever you do to one side, you must do to the other. Try the problem again with this in mind."
+      
       _ ->
-        state
+        "That's not quite right. Let's work through this step by step. What do you need to do first to isolate x?"
+    end
+    
+    feedback = feedback <> "\n\nGive it another try when you're ready!"
+    
+    # Add feedback to conversation and include diagnosis metadata for context
+    new_state = add_to_conversation_with_metadata(state_with_diagnosis, :system, feedback, %{
+      diagnosis: diagnosis,
+      error_type: error_category
+    })
+    
+    # Determine event based on error category
+    event = case error_category do
+      "computational" -> :known_error_detected
+      "procedural" -> :known_error_detected
+      "conceptual" -> :unknown_error_detected
+      _ -> :unknown_error_detected
+    end
+    
+    case PSM.transition(new_state.current_state, event) do
+      {:ok, new_pedagogical_state} ->
+        %{new_state | current_state: new_pedagogical_state}
+      _ ->
+        new_state
     end
   end
 
@@ -559,10 +595,15 @@ defmodule Tutor.Learning.SessionServer do
   # Helper functions
 
   defp add_to_conversation(state, role, content) do
+    add_to_conversation_with_metadata(state, role, content, %{})
+  end
+  
+  defp add_to_conversation_with_metadata(state, role, content, metadata) do
     entry = %{
       role: role,
       content: content,
-      timestamp: DateTime.utc_now()
+      timestamp: DateTime.utc_now(),
+      metadata: metadata
     }
     
     conversation_history = [entry | state.conversation_history]

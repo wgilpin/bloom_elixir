@@ -69,7 +69,7 @@ config :tutor, dev_routes: true
 config :logger, :console, format: "[$level] $message\n"
 
 # Reduce LiveView debug noise - set to :info to hide debug logs
-config :logger, level: :info
+config :logger, level: :debug
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.
