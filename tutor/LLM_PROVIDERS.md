@@ -10,12 +10,12 @@ This application now supports multiple LLM providers. You can easily switch betw
 - Get API key: https://platform.openai.com/api-keys
 
 ### 2. Google Gemini
-- Models: Gemini Pro, Gemini Pro Vision
+- Models: gemini-2.5-flash
 - Required: `GEMINI_API_KEY` or `GOOGLE_API_KEY` environment variable
 - Get API key: https://makersuite.google.com/app/apikey
 
 ### 3. xAI Grok
-- Models: grok-2-1212, grok-2-mini
+- Models: grok-3-mini
 - Required: `GROK_API_KEY` or `XAI_API_KEY` environment variable
 - Get API key: https://x.ai/api
 
