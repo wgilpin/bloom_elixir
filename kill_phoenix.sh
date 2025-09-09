@@ -3,50 +3,46 @@
 # Script to kill old Phoenix server instances
 echo "🔍 Searching for processes using port 4000..."
 
-# Find processes using port 4000
-PIDS=$(netstat -ano | grep :4000 | awk '{print $5}' | sort -u)
+# Find the PID listening on port 4000
+LISTENING_PID=$(netstat -ano | grep :4000 | grep LISTENING | awk '{print $5}' | head -1)
 
-if [ -z "$PIDS" ]; then
-    echo "✅ No processes found using port 4000"
+if [ -n "$LISTENING_PID" ] && [ "$LISTENING_PID" != "0" ]; then
+    echo "💀 Found process listening on port 4000 - PID: $LISTENING_PID"
+    taskkill /F /PID $LISTENING_PID 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "  ✅ Killed PID: $LISTENING_PID"
+    else
+        echo "  ❌ Failed to kill PID: $LISTENING_PID"
+    fi
 else
-    echo "📋 Found processes using port 4000:"
-    for pid in $PIDS; do
-        if [ "$pid" != "0" ] && [ -n "$pid" ]; then
-            # Get process name if possible
-            PROCESS_NAME=$(tasklist | grep "^.*\s$pid\s" | awk '{print $1}' || echo "Unknown")
-            echo "  PID: $pid ($PROCESS_NAME)"
-        fi
-    done
-    
-    echo ""
-    echo "💀 Killing processes..."
-    for pid in $PIDS; do
-        if [ "$pid" != "0" ] && [ -n "$pid" ]; then
-            taskkill /F /PID $pid 2>/dev/null
-            if [ $? -eq 0 ]; then
-                echo "  ✅ Killed PID: $pid"
-            else
-                echo "  ❌ Failed to kill PID: $pid"
-            fi
-        fi
-    done
+    echo "✅ No process found listening on port 4000"
 fi
 
-echo ""
-echo "🔍 Also checking for Elixir/Erlang processes..."
+# Also kill any other processes connected to port 4000
+OTHER_PIDS=$(netstat -ano | grep :4000 | awk '{print $5}' | sort -u)
+for pid in $OTHER_PIDS; do
+    if [ "$pid" != "0" ] && [ -n "$pid" ] && [ "$pid" != "$LISTENING_PID" ]; then
+        taskkill /F /PID $pid 2>/dev/null
+    fi
+done
 
-# Kill any beam.smp or erl processes (Erlang/Elixir)
-BEAM_PIDS=$(tasklist | grep -i "beam\|erl" | awk '{print $2}')
-if [ -n "$BEAM_PIDS" ]; then
-    echo "📋 Found Erlang/Elixir processes:"
-    echo "$BEAM_PIDS" | while read pid; do
-        if [ -n "$pid" ]; then
-            echo "  Killing PID: $pid"
-            taskkill /F /PID $pid 2>/dev/null
-        fi
-    done
+echo ""
+echo "🔍 Killing all Erlang/Elixir processes..."
+
+# Kill all erl.exe processes
+taskkill /F /IM erl.exe 2>/dev/null
+if [ $? -eq 0 ]; then
+    echo "  ✅ Killed erl.exe processes"
 else
-    echo "✅ No Erlang/Elixir processes found"
+    echo "  ✅ No erl.exe processes found"
+fi
+
+# Kill all beam.smp.exe processes
+taskkill /F /IM beam.smp.exe 2>/dev/null
+if [ $? -eq 0 ]; then
+    echo "  ✅ Killed beam.smp.exe processes"  
+else
+    echo "  ✅ No beam.smp.exe processes found"
 fi
 
 echo ""
